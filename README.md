@@ -148,11 +148,45 @@ catalyst deploy --only functions:task_reminder
 
 ---
 
+## Dynamic Cron — How Reminders Work
+
+Each task with a reminder enabled gets its own **one-time Catalyst Cron** scheduled to fire at the exact due date/time.
+
+### Lifecycle
+
+| Event | Cron Action |
+|---|---|
+| Task created with reminder | Cron created, `cron_id` stored on the task row |
+| Task due date updated | Old cron deleted, new cron created at the updated time |
+| Reminder toggled off | Cron deleted, `cron_id` cleared |
+| Reminder toggled back on | New cron created |
+| Task completed or deleted | Cron deleted |
+
+### Implementation Details
+
+- **Scheduling unit:** Cron `time_of_execution` is set in **Unix seconds** (`Math.floor(dueMs / 1000)`)
+- **Guard:** Crons scheduled less than 10 seconds from now are skipped to avoid Catalyst API rejection
+- **Cron type:** `OneTime` — fires once and does not repeat
+- **Target:** Catalyst Job Function `task_reminder`, executed inside job pool `TaskReminderPool`
+- **Params passed:** `task_id` and `reminder_email` so the job function knows which task to look up and who to email
+
+### Reminder Email Flow
+
+```
+Cron fires at due_date
+    → task_reminder job function triggered
+    → Looks up task details from Datastore by task_id
+    → Sends HTML email via Catalyst Mail to reminder_email
+```
+
+The `task_reminder` function reads `MAIL_FROM_ADDRESS` from its environment variables as the sender address.
+
+---
+
 ## Catalyst Resources
 
-| Resource | Name / ID |
+| Resource | Name |
 |---|---|
-| Project | TaskManager (`20660000000175003`) |
 | Slate | task-manager |
 | Function | task_api (Advanced I/O) |
 | Function | task_reminder (Job) |
