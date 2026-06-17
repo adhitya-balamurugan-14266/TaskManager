@@ -60,11 +60,13 @@ function TaskKanbanCard({
   dueDate,
   status,
   daysOverdue,
+  serviceLogoUrl,
   onClick,
 }: {
   title: string;
   description: string | null;
   serviceName: string;
+  serviceLogoUrl: string | null;
   dueDate: string;
   status: 'active' | 'completed' | 'overdue';
   daysOverdue?: number;
@@ -97,8 +99,12 @@ function TaskKanbanCard({
           {description}
         </p>
       )}
-      <div className="flex items-center gap-1 mt-2.5 pt-2 border-t border-gray-100 dark:border-gray-700">
-        <Building2 className="size-3 text-gray-400 dark:text-gray-500 shrink-0" />
+      <div className="flex items-center gap-1.5 mt-2.5 pt-2 border-t border-gray-100 dark:border-gray-700">
+        <div className="h-4 w-4 rounded shrink-0 overflow-hidden bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
+          {serviceLogoUrl
+            ? <img src={serviceLogoUrl} alt={serviceName} className="h-full w-full object-cover" />
+            : <Building2 className="size-2.5 text-gray-400 dark:text-gray-500" />}
+        </div>
         <span className="text-xs text-gray-400 dark:text-gray-500 truncate">{serviceName}</span>
       </div>
     </button>
@@ -117,8 +123,12 @@ function TaskDetailContent({
   return (
     <div className="space-y-4">
       {/* Service breadcrumb */}
-      <div className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
-        <Building2 className="size-3.5" />
+      <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+        <div className="h-5 w-5 rounded-md overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center shrink-0 border border-gray-200 dark:border-gray-700">
+          {service.logo_url
+            ? <img src={service.logo_url} alt={service.name} className="h-full w-full object-cover" />
+            : <Building2 className="size-3 text-gray-400" />}
+        </div>
         <span>{service.name}</span>
       </div>
 
@@ -281,7 +291,11 @@ export function WorkspacePage({ state, onBack, onSelectService }: WorkspacePageP
                         }}
                         className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                       >
-                        <Building2 className="size-4 text-gray-400 shrink-0" />
+                        <div className="h-6 w-6 rounded-md shrink-0 overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center border border-gray-200 dark:border-gray-700">
+                          {s.logo_url
+                            ? <img src={s.logo_url} alt={s.name} className="h-full w-full object-cover" />
+                            : <Building2 className="size-3.5 text-gray-400" />}
+                        </div>
                         <span className="flex-1 truncate text-left">{s.name}</span>
                         <span className="text-xs text-gray-400 shrink-0">{activeCount} active</span>
                         <ArrowRight className="size-3.5 text-gray-300 dark:text-gray-600 shrink-0" />
@@ -316,6 +330,7 @@ export function WorkspacePage({ state, onBack, onSelectService }: WorkspacePageP
                   title={t.title}
                   description={t.description}
                   serviceName={serviceMap[t.service_id]?.name ?? '—'}
+                  serviceLogoUrl={serviceMap[t.service_id]?.logo_url ?? null}
                   dueDate={t.due_date}
                   status="active"
                   onClick={() => openCard('active', t.id)}
@@ -342,6 +357,7 @@ export function WorkspacePage({ state, onBack, onSelectService }: WorkspacePageP
                   title={t.title}
                   description={t.description}
                   serviceName={serviceMap[t.service_id]?.name ?? '—'}
+                  serviceLogoUrl={serviceMap[t.service_id]?.logo_url ?? null}
                   dueDate={t.due_date}
                   status="completed"
                   onClick={() => openCard('completed', t.id)}
@@ -368,6 +384,7 @@ export function WorkspacePage({ state, onBack, onSelectService }: WorkspacePageP
                   title={task.title}
                   description={task.description}
                   serviceName={serviceMap[task.service_id]?.name ?? '—'}
+                  serviceLogoUrl={serviceMap[task.service_id]?.logo_url ?? null}
                   dueDate={task.due_date}
                   status="overdue"
                   daysOverdue={o.days_overdue}
