@@ -1,0 +1,13 @@
+{
+  "slate": [
+    {
+      "name": "task-manager",
+      "source": "/Users/adhitya-14266/ClaudeApps/TaskManager/client"
+    }
+  ],
+  "functions": {
+    "base_dir": "functions",
+    "targets": ["task_api", "task_reminder"]
+  }
+}
+

@@ -1,0 +1,9 @@
+{
+  "name": "task_reminder",
+  "version": "1.0.0",
+  "description": "Cron function that checks for overdue reminder tasks and logs them",
+  "main": "index.js",
+  "dependencies": {
+    "zcatalyst-sdk-node": "latest"
+  }
+}

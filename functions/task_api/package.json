@@ -1,0 +1,9 @@
+{
+  "name": "task_api",
+  "version": "1.0.0",
+  "description": "Task Manager REST API",
+  "main": "index.js",
+  "dependencies": {
+    "zcatalyst-sdk-node": "latest"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "deployment": {
+    "name": "task_reminder",
+    "stack": "node20",
+    "type": "job",
+    "env_variables": {
+      "MAIL_FROM_ADDRESS": "",
+      "MAIL_TO_ADDRESS": ""
+    }
+  },
+  "execution": {
+    "main": "index.js"
+  }
+}

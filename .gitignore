@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Build output (Vite builds into client/)
+client/assets/
+client/*.js
+client/*.css
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Catalyst CLI internals
+.catalyst/
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/settings.json
