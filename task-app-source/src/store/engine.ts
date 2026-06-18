@@ -6,6 +6,8 @@ import type {
   CompleteTaskPayload,
   DeleteTaskPayload,
   UpdateTaskPayload,
+  ActivateTaskPayload,
+  MoveToPipelinePayload,
 } from '@/types';
 
 const BASE_URL =
@@ -72,7 +74,8 @@ export async function createTask(_state: AppState, payload: CreateTaskPayload) {
 }
 
 export async function completeTask(_state: AppState, payload: CompleteTaskPayload) {
-  return apiFetch(`/tasks/${payload.task_id}/complete`, { method: 'PUT' });
+  const { task_id, ...body } = payload;
+  return apiFetch(`/tasks/${task_id}/complete`, { method: 'PUT', body: JSON.stringify(body) });
 }
 
 export async function deleteTask(_state: AppState, payload: DeleteTaskPayload) {
@@ -82,4 +85,14 @@ export async function deleteTask(_state: AppState, payload: DeleteTaskPayload) {
 export async function updateTask(_state: AppState, payload: UpdateTaskPayload) {
   const { task_id, ...updates } = payload;
   return apiFetch(`/tasks/${task_id}`, { method: 'PUT', body: JSON.stringify(updates) });
+}
+
+export async function activateTask(_state: AppState, payload: ActivateTaskPayload) {
+  const { task_id, ...updates } = payload;
+  return apiFetch(`/tasks/${task_id}/activate`, { method: 'PUT', body: JSON.stringify(updates) });
+}
+
+export async function moveToPipeline(_state: AppState, payload: MoveToPipelinePayload) {
+  const { task_id, ...body } = payload;
+  return apiFetch(`/tasks/${task_id}/push-to-pipeline`, { method: 'PUT', body: JSON.stringify(body) });
 }

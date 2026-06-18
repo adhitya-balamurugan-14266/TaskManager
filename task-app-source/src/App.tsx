@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTaskManager } from '@/hooks/useTaskManager';
 import { ServicesPage } from '@/pages/ServicesPage';
 import { ServiceDetailPage } from '@/pages/ServiceDetailPage';
 import { SetupPage } from '@/pages/SetupPage';
 import { WorkspacePage } from '@/pages/WorkspacePage';
 import type { Service } from '@/types';
+import { Sun, Moon } from 'lucide-react';
 
 function ErrorToast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   return (
@@ -20,6 +21,16 @@ export default function App() {
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [showWorkspace, setShowWorkspace] = useState(false);
   const [userEmail, setUserEmail] = useState<string>(() => localStorage.getItem('task_manager_email') || '');
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    const stored = localStorage.getItem('task_manager_theme');
+    if (stored) return stored === 'dark';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', isDark);
+    localStorage.setItem('task_manager_theme', isDark ? 'dark' : 'light');
+  }, [isDark]);
 
   function handleSetupEmail(email: string) {
     localStorage.setItem('task_manager_email', email);
@@ -58,9 +69,11 @@ export default function App() {
           userEmail={userEmail}
           onBack={() => setSelectedService(null)}
           onCreateTask={(data) => tm.createTask({ ...data, service_id: currentService.id })}
-          onCompleteTask={(id) => tm.completeTask({ task_id: id })}
+          onCompleteTask={(id, finalThoughts) => tm.completeTask({ task_id: id, final_thoughts: finalThoughts })}
           onDeleteTask={(id) => tm.deleteTask({ task_id: id })}
           onUpdateTask={(id, data) => tm.updateTask({ task_id: id, ...data })}
+          onActivateTask={(id, data) => tm.activateTask({ task_id: id, ...data })}
+          onMoveToPipeline={(id, reason) => tm.moveToPipeline({ task_id: id, reason })}
         />
       ) : showWorkspace ? (
         <WorkspacePage
@@ -82,6 +95,16 @@ export default function App() {
         />
       )}
       {tm.error && <ErrorToast message={tm.error} onDismiss={tm.clearError} />}
+      {/* Dark / Light mode toggle */}
+      <button
+        onClick={() => setIsDark((d) => !d)}
+        title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+        className="fixed bottom-5 right-5 z-50 p-2.5 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-lg hover:shadow-xl transition-all hover:scale-105"
+      >
+        {isDark
+          ? <Sun className="size-4 text-yellow-400" />
+          : <Moon className="size-4 text-gray-600" />}
+      </button>
     </div>
   );
 }

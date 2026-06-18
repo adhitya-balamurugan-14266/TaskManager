@@ -9,11 +9,13 @@ import type {
   CompleteTaskPayload,
   DeleteTaskPayload,
   UpdateTaskPayload,
+  ActivateTaskPayload,
+  MoveToPipelinePayload,
 } from '@/types';
 
 const EMPTY_STATE: AppState = {
   services: [],
-  tasks: { active: [], completed: {} },
+  tasks: { active: [], completed: {}, pipeline: [] },
   overdue: [],
   last_updated: new Date().toISOString(),
 };
@@ -57,6 +59,8 @@ export function useTaskManager() {
     completeTask: (p: CompleteTaskPayload) => dispatch(engine.completeTask, p),
     deleteTask: (p: DeleteTaskPayload) => dispatch(engine.deleteTask, p),
     updateTask: (p: UpdateTaskPayload) => dispatch(engine.updateTask, p),
+    activateTask: (p: ActivateTaskPayload) => dispatch(engine.activateTask, p),
+    moveToPipeline: (p: MoveToPipelinePayload) => dispatch(engine.moveToPipeline, p),
     getLogoUploadUrl: engine.getLogoUploadUrl,
   };
 }

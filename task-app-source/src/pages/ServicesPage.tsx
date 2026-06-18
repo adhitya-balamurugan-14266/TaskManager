@@ -80,7 +80,8 @@ export function ServicesPage({ state, onCreateService, onDeleteService, onSelect
   function getTaskCount(service_id: string) {
     const active = state.tasks.active.filter((t) => t.service_id === service_id).length;
     const completed = Object.values(state.tasks.completed).flat().filter((t) => t.service_id === service_id).length;
-    return { active, completed };
+    const priority = state.tasks.active.filter((t) => t.service_id === service_id && t.is_priority).length;
+    return { active, completed, priority };
   }
 
   const overdueByService = state.overdue.reduce<Record<string, number>>((acc, t) => {
@@ -136,7 +137,8 @@ export function ServicesPage({ state, onCreateService, onDeleteService, onSelect
             return (
               <div
                 key={s.id}
-                className="flex items-center gap-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 hover:border-blue-300 dark:hover:border-blue-700 transition-colors group"
+                onClick={() => onSelectService(s)}
+                className="flex items-center gap-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 hover:border-blue-300 dark:hover:border-blue-700 transition-colors group cursor-pointer"
               >
                 {/* Service logo or fallback icon */}
                 <div className="shrink-0 h-11 w-11 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center border border-gray-200 dark:border-gray-700">
@@ -147,6 +149,7 @@ export function ServicesPage({ state, onCreateService, onDeleteService, onSelect
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <h2 className="font-semibold text-gray-900 dark:text-gray-100 truncate">{s.name}</h2>
+                    {counts.priority > 0 && <Badge variant="priority">{counts.priority} priority</Badge>}
                     {overdueCount > 0 && <Badge variant="overdue">{overdueCount} overdue</Badge>}
                   </div>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
@@ -157,7 +160,7 @@ export function ServicesPage({ state, onCreateService, onDeleteService, onSelect
                   <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); setConfirmDelete(s); }}>
                     <Trash2 className="size-3.5" />
                   </Button>
-                  <Button size="sm" variant="secondary" onClick={() => onSelectService(s)}>
+                  <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); onSelectService(s); }}>
                     Open <ArrowRight className="size-3.5" />
                   </Button>
                 </div>

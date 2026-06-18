@@ -136,6 +136,9 @@ function rowToTask(row) {
     reminder: row.reminder === true || row.reminder === 'true',
     reminder_email: row.reminder_email || null,
     status: row.status,
+    pipeline_reason: row.pipeline_reason || null,
+    final_thoughts: row.final_thoughts || null,
+    is_priority: row.is_priority === true || row.is_priority === 'true',
   };
   if (row.status === 'completed') base.date_completed = row.date_completed;
   return base;
@@ -150,6 +153,7 @@ async function buildState(zcql) {
   const taskRows = await zcql.executeZCQLQuery(`SELECT * FROM ${TASKS_TABLE}`);
   const allTasks = taskRows.map((r) => rowToTask(r[TASKS_TABLE])).filter(Boolean);
 
+  const pipeline = allTasks.filter((t) => t.status === 'pipeline');
   const active = allTasks.filter((t) => t.status === 'active');
   const completedFlat = allTasks.filter((t) => t.status === 'completed');
 
@@ -164,7 +168,7 @@ async function buildState(zcql) {
 
   return {
     services,
-    tasks: { active, completed },
+    tasks: { active, completed, pipeline },
     overdue,
     last_updated: new Date().toISOString(),
   };
@@ -259,11 +263,9 @@ module.exports = async (req, res) => {
     // POST /tasks — create_task
     if (action === 'tasks' && method === 'POST') {
       const body = await getBody(req);
-      const { title, service_id, days_assigned, due_date, reminder, description, reminder_time, reminder_email } = body;
+      const { title, service_id, days_assigned, due_date, reminder, description, reminder_time, reminder_email, is_pipeline } = body;
       if (!title || !title.trim()) return sendJson(res, 400, { error: 'Task title is required.' });
       if (!service_id) return sendJson(res, 400, { error: 'service_id is required.' });
-      const parsedDays = Number(days_assigned);
-      if (!due_date && (!parsedDays || parsedDays < 0)) return sendJson(res, 400, { error: 'days_assigned must be 0 or greater.' });
 
       const svcRows = await zcql.executeZCQLQuery(
         `SELECT ROWID FROM ${SERVICES_TABLE} WHERE ROWID = ${service_id}`
@@ -271,11 +273,33 @@ module.exports = async (req, res) => {
       if (svcRows.length === 0) return sendJson(res, 404, { error: `Service "${service_id}" not found.` });
 
       const date_added = new Date().toISOString();
+
+      if (is_pipeline) {
+        await dsTasks.insertRow({
+          title: title.trim(),
+          description: description ? description.trim() : null,
+          service_id: String(service_id),
+          date_added,
+          days_assigned: 0,
+          due_date: null,
+          reminder: false,
+          reminder_email: null,
+          status: 'pipeline',
+          date_completed: null,
+          cron_id: null,
+        });
+        const state = await buildState(zcql);
+        return sendJson(res, 201, state);
+      }
+
+      const parsedDays = Number(days_assigned);
+      if (!due_date && (!parsedDays || parsedDays < 0)) return sendJson(res, 400, { error: 'days_assigned must be 0 or greater.' });
       // If due_date is already a full ISO string (sent from browser with correct tz), use it directly
       const resolvedDueDate = (due_date && due_date.includes('T'))
         ? due_date
         : combineDateAndTime(due_date, reminder_time) || addDays(date_added, parsedDays || 0, reminder_time);
       const resolvedDaysAssigned = calcDaysAssigned(date_added, resolvedDueDate);
+
       const inserted = await dsTasks.insertRow({
         title: title.trim(),
         description: description ? description.trim() : null,
@@ -297,9 +321,76 @@ module.exports = async (req, res) => {
       return sendJson(res, 201, state);
     }
 
+    // PUT /tasks/:id/push-to-pipeline — move any active/completed task back to pipeline
+    if (pathParts[pathParts.length - 1] === 'push-to-pipeline' && pathParts[pathParts.length - 3] === 'tasks' && method === 'PUT') {
+      const taskId = pathParts[pathParts.length - 2];
+      const body = await getBody(req);
+      const taskRows = await zcql.executeZCQLQuery(
+        `SELECT * FROM ${TASKS_TABLE} WHERE ROWID = ${taskId}`
+      );
+      if (taskRows.length === 0) return sendJson(res, 404, { error: `Task "${taskId}" not found.` });
+
+      const existingRaw = taskRows[0][TASKS_TABLE];
+      if (existingRaw.status === 'pipeline') return sendJson(res, 400, { error: 'Task is already in pipeline.' });
+
+      await deleteReminderCron(catalystApp, existingRaw.cron_id || null);
+
+      const reason = body.reason ? String(body.reason).trim() : null;
+      await dsTasks.updateRow({
+        ROWID: taskId,
+        status: 'pipeline',
+        due_date: null,
+        days_assigned: 0,
+        reminder: false,
+        reminder_email: null,
+        cron_id: null,
+        date_completed: null,
+        pipeline_reason: reason || null,
+      });
+
+      const state = await buildState(zcql);
+      return sendJson(res, 200, state);
+    }
+
+    // PUT /tasks/:id/activate — activate pipeline task
+    if (pathParts[pathParts.length - 1] === 'activate' && pathParts[pathParts.length - 3] === 'tasks' && method === 'PUT') {
+      const taskId = pathParts[pathParts.length - 2];
+      const body = await getBody(req);
+      const taskRows = await zcql.executeZCQLQuery(
+        `SELECT * FROM ${TASKS_TABLE} WHERE ROWID = ${taskId} AND status = 'pipeline'`
+      );
+      if (taskRows.length === 0) return sendJson(res, 404, { error: `Task "${taskId}" not found in pipeline.` });
+
+      const existing = rowToTask(taskRows[0][TASKS_TABLE]);
+      const { days_assigned, due_date, reminder, reminder_email } = body;
+      const resolvedDueDate = (due_date && due_date.includes('T'))
+        ? due_date
+        : addDays(existing.date_added, Number(days_assigned) || 1, null);
+      const resolvedDaysAssigned = calcDaysAssigned(existing.date_added, resolvedDueDate);
+
+      await dsTasks.updateRow({
+        ROWID: taskId,
+        status: 'active',
+        due_date: resolvedDueDate,
+        days_assigned: resolvedDaysAssigned,
+        reminder: !!reminder,
+        reminder_email: reminder_email ? reminder_email.trim() : null,
+        cron_id: null,
+      });
+
+      if (!!reminder) {
+        const cronId = await createReminderCron(catalystApp, taskId, resolvedDueDate, reminder_email || '');
+        if (cronId) await dsTasks.updateRow({ ROWID: taskId, cron_id: cronId });
+      }
+
+      const state = await buildState(zcql);
+      return sendJson(res, 200, state);
+    }
+
     // PUT /tasks/:id/complete — complete_task
     if (pathParts[pathParts.length - 1] === 'complete' && pathParts[pathParts.length - 3] === 'tasks' && method === 'PUT') {
       const taskId = pathParts[pathParts.length - 2];
+      const body = await getBody(req);
       const taskRows = await zcql.executeZCQLQuery(
         `SELECT * FROM ${TASKS_TABLE} WHERE ROWID = ${taskId} AND status = 'active'`
       );
@@ -307,7 +398,8 @@ module.exports = async (req, res) => {
 
       await deleteReminderCron(catalystApp, taskRows[0][TASKS_TABLE].cron_id || null);
       const date_completed = new Date().toISOString();
-      await dsTasks.updateRow({ ROWID: taskId, status: 'completed', date_completed, cron_id: null });
+      const final_thoughts = body.final_thoughts ? String(body.final_thoughts).trim() : null;
+      await dsTasks.updateRow({ ROWID: taskId, status: 'completed', date_completed, cron_id: null, final_thoughts: final_thoughts || null });
       const state = await buildState(zcql);
       return sendJson(res, 200, state);
     }
@@ -326,22 +418,46 @@ module.exports = async (req, res) => {
       return sendJson(res, 200, state);
     }
 
-    // PUT /tasks/:id — update_task
+    // PUT /tasks/:id — update_task (active or pipeline)
     if (pathParts[pathParts.length - 2] === 'tasks' && method === 'PUT') {
       const taskId = action;
       const body = await getBody(req);
       const taskRows = await zcql.executeZCQLQuery(
-        `SELECT * FROM ${TASKS_TABLE} WHERE ROWID = ${taskId} AND status = 'active'`
+        `SELECT * FROM ${TASKS_TABLE} WHERE ROWID = ${taskId}`
       );
-      if (taskRows.length === 0) return sendJson(res, 404, { error: `Task "${taskId}" not found in active tasks.` });
+      if (taskRows.length === 0) return sendJson(res, 404, { error: `Task "${taskId}" not found.` });
 
       const rawTask = taskRows[0][TASKS_TABLE];
       const existing = rowToTask(rawTask);
+
+      // Pipeline tasks: only title, description, pipeline_reason are editable
+      if (existing.status === 'pipeline') {
+        const updates = { ROWID: taskId };
+        if (body.title !== undefined) updates.title = body.title.trim();
+        if (body.description !== undefined) updates.description = body.description ? body.description.trim() : null;
+        if (body.pipeline_reason !== undefined) updates.pipeline_reason = body.pipeline_reason ? body.pipeline_reason.trim() : null;
+        await dsTasks.updateRow(updates);
+        const state = await buildState(zcql);
+        return sendJson(res, 200, state);
+      }
+
+      // Completed tasks: only final_thoughts is editable
+      if (existing.status === 'completed') {
+        const updates = { ROWID: taskId };
+        if (body.final_thoughts !== undefined) updates.final_thoughts = body.final_thoughts ? body.final_thoughts.trim() : null;
+        await dsTasks.updateRow(updates);
+        const state = await buildState(zcql);
+        return sendJson(res, 200, state);
+      }
+
+      if (existing.status !== 'active') return sendJson(res, 400, { error: `Task "${taskId}" cannot be updated in its current state.` });
+
       const updates = { ROWID: taskId };
       if (body.title !== undefined) updates.title = body.title.trim();
       if (body.description !== undefined) updates.description = body.description ? body.description.trim() : null;
       if (body.reminder !== undefined) updates.reminder = !!body.reminder;
       if (body.reminder_email !== undefined) updates.reminder_email = body.reminder_email ? body.reminder_email.trim() : null;
+      if (body.is_priority !== undefined) updates.is_priority = !!body.is_priority;
       if (body.days_assigned !== undefined || body.due_date !== undefined || body.reminder_time !== undefined) {
         // If due_date is already a full ISO string (sent from browser with correct tz), use it directly
         const nextDueDate = (body.due_date && body.due_date.includes('T'))
