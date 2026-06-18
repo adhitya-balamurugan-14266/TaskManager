@@ -192,3 +192,24 @@ The `task_reminder` function reads `MAIL_FROM_ADDRESS` from its environment vari
 | Function | task_reminder (Job) |
 | Job Pool | TaskReminderPool |
 | Stratus Bucket | taskmanager-175003 |
+
+---
+
+## Catalyst MCP
+
+This project was built with the assistance of **Catalyst MCP (Model Context Protocol)**. The MCP server exposes Catalyst platform capabilities as tools that an AI agent can call directly — enabling end-to-end development without leaving the editor.
+
+| MCP Capability Used | What It Did |
+|--------------------|-------------|
+| Project & resource introspection | Explored Catalyst project config, functions, DataStore tables, and Stratus buckets during development |
+| DataStore operations | Queried and inspected `Services` and `Tasks` table schemas via MCP tools during testing |
+| Function management | Inspected and updated function configurations and environment variables |
+| Cron management | Created and verified one-time cron jobs for task reminders during development |
+| Stratus operations | Verified bucket configuration and object paths for service logo storage |
+| Guided code generation | AI agent used MCP context to generate correct SDK usage patterns (`zcatalyst-sdk-node`) for DataStore ZCQL queries, Stratus presigned URLs, and Job Scheduling |
+
+---
+
+## Live Application
+
+[https://task-manager.onslate.in](https://task-manager.onslate.in)
