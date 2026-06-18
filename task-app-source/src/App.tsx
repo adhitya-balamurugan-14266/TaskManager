@@ -31,6 +31,7 @@ export default function App() {
   // Sync the `dark` class on <html> with state and persist the preference.
   // Tailwind's @variant dark rule keys off this class (configured in index.css).
   useEffect(() => {
+    document.documentElement.classList.toggle('dark', isDark);
     localStorage.setItem('task_manager_theme', isDark ? 'dark' : 'light');
   }, [isDark]);
 
