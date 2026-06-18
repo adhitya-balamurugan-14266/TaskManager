@@ -1,7 +1,23 @@
+/**
+ * task_reminder — Catalyst Job Function
+ *
+ * Triggered by a one-time Catalyst Cron that was created when a task with
+ * reminder=true was saved. The cron passes two params:
+ *   task_id        — ROWID of the task in the Tasks table
+ *   reminder_email — Recipient address supplied at task creation
+ *
+ * The function only sends the email if the task is still active and still has
+ * reminder=true at fire time. This guards against the case where the task was
+ * completed, deleted, or had its reminder disabled before the cron fired.
+ *
+ * Required environment variables (set on the function in Catalyst Console):
+ *   MAIL_FROM_ADDRESS — Sender address for the outgoing reminder email
+ *   MAIL_TO_ADDRESS   — (Optional) Fallback recipient
+ */
 'use strict';
 const catalyst = require('zcatalyst-sdk-node');
 
-const TASKS_TABLE = 'Tasks';
+const TASKS_TABLE    = 'Tasks';
 const SERVICES_TABLE = 'Services';
 const MAIL_FROM = process.env.MAIL_FROM_ADDRESS || '';
 const MAIL_TO = process.env.MAIL_TO_ADDRESS || '';

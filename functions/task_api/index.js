@@ -1,18 +1,63 @@
+/**
+ * task_api — Advanced I/O Function
+ *
+ * The single REST API for the TaskManager app. Routes are resolved by matching
+ * the last URL path segment(s) and the HTTP method, since Catalyst Advanced I/O
+ * functions receive a raw Node.js IncomingMessage rather than a pre-parsed router.
+ *
+ * Route summary:
+ *   GET  /state                         — full app state snapshot
+ *   POST /services/logo-upload          — presigned PUT URL for Stratus logo
+ *   POST /services                      — create a service
+ *   DELETE /services/:id                — delete service + tasks + Stratus logo
+ *   POST /tasks                         — create a task (active or pipeline)
+ *   PUT  /tasks/:id/push-to-pipeline    — move any task to pipeline
+ *   PUT  /tasks/:id/activate            — activate a pipeline task
+ *   PUT  /tasks/:id/complete            — complete an active task
+ *   DELETE /tasks/:id                   — delete a task
+ *   PUT  /tasks/:id                     — generic update (active / pipeline / completed)
+ */
 'use strict';
 const catalyst = require('zcatalyst-sdk-node');
 
+// ─── Constants ─────────────────────────────────────────────────────────────────
 const SERVICES_TABLE = 'Services';
-const TASKS_TABLE = 'Tasks';
-const JOBPOOL_NAME = 'TaskReminderPool';
-const REMINDER_FUNCTION_NAME = 'task_reminder';
-const STRATUS_BUCKET = 'taskmanager-175003';
-const LOGO_PATH_PREFIX = 'service-logos/';
+const TASKS_TABLE    = 'Tasks';
+const JOBPOOL_NAME   = 'TaskReminderPool';       // Catalyst Job Pool for reminder jobs
+const REMINDER_FUNCTION_NAME = 'task_reminder'; // Job Function triggered by crons
+const STRATUS_BUCKET = 'taskmanager-175003';     // Catalyst Stratus bucket for service logos
+const LOGO_PATH_PREFIX = 'service-logos/';      // Object key prefix inside the bucket
 
+// ─── Utilities ────────────────────────────────────────────────────────────────
+
+/**
+ * Validates that a value coming from a URL path segment is a safe numeric ID.
+ * Prevents ZCQL injection by rejecting non-numeric route parameters before
+ * they are interpolated into query strings.
+ * @param {string|number} id
+ * @returns {boolean}
+ */
+function isValidId(id) {
+  return /^\d+$/.test(String(id));
+}
+
+/**
+ * Writes a JSON response with the given HTTP status code.
+ * @param {import('http').ServerResponse} res
+ * @param {number} status
+ * @param {object} data
+ */
 function sendJson(res, status, data) {
   res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(data));
 }
 
+/**
+ * Reads and parses the JSON request body.
+ * Handles both pre-parsed bodies (set by Catalyst middleware) and raw streams.
+ * @param {import('http').IncomingMessage} req
+ * @returns {Promise<object>}
+ */
 function getBody(req) {
   return new Promise((resolve, reject) => {
     if (req.body && typeof req.body === 'object') return resolve(req.body);
@@ -28,6 +73,14 @@ function getBody(req) {
   });
 }
 
+/**
+ * Returns an ISO timestamp that is `days` days after `isoDate`.
+ * If `time` is provided as "HH:MM" it is applied; otherwise defaults to 23:59.
+ * @param {string} isoDate - Base ISO date string
+ * @param {number} days
+ * @param {string|null} time - Optional "HH:MM" override
+ * @returns {string} ISO timestamp
+ */
 function addDays(isoDate, days, time) {
   const d = new Date(isoDate);
   d.setDate(d.getDate() + days);
@@ -40,6 +93,13 @@ function addDays(isoDate, days, time) {
   return d.toISOString();
 }
 
+/**
+ * Combines a "YYYY-MM-DD" date string and an optional "HH:MM" time string into
+ * a full UTC ISO timestamp. Returns null if the date is invalid.
+ * @param {string} dateValue
+ * @param {string|undefined} timeValue
+ * @returns {string|null}
+ */
 function combineDateAndTime(dateValue, timeValue) {
   if (!dateValue || !/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) return null;
   const safeTime = timeValue && /^\d{1,2}:\d{2}$/.test(timeValue) ? timeValue : '23:59';
@@ -48,6 +108,13 @@ function combineDateAndTime(dateValue, timeValue) {
   return dt.toISOString();
 }
 
+/**
+ * Calculates the number of days between task creation and due date.
+ * Always returns at least 1 so the field stays meaningful.
+ * @param {string} dateAddedIso
+ * @param {string} dueDateIso
+ * @returns {number}
+ */
 function calcDaysAssigned(dateAddedIso, dueDateIso) {
   const added = new Date(dateAddedIso);
   const due = new Date(dueDateIso);
@@ -55,14 +122,28 @@ function calcDaysAssigned(dateAddedIso, dueDateIso) {
   return Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
 }
 
+/**
+ * Extracts the "YYYY-MM" month key from an ISO date string.
+ * Used to group completed tasks into monthly archive buckets.
+ * @param {string} isoDate
+ * @returns {string}
+ */
 function monthKey(isoDate) {
   return isoDate.slice(0, 7);
 }
 
+/**
+ * Derives the overdue list from active tasks.
+ * A task is overdue if its due date is in the past — the reminder flag is
+ * intentionally NOT checked here; any task can be overdue regardless of
+ * whether an email reminder was configured.
+ * @param {object[]} activeTasks - Mapped task objects with a due_date field
+ * @returns {object[]}
+ */
 function computeOverdue(activeTasks) {
   const now = new Date();
   return activeTasks
-    .filter((t) => t.reminder && new Date(t.due_date) < now)
+    .filter((t) => t.due_date && new Date(t.due_date) < now)
     .map((t) => ({
       id: String(t.id),
       title: t.title,
@@ -72,6 +153,16 @@ function computeOverdue(activeTasks) {
     }));
 }
 
+/**
+ * Creates a one-time Catalyst Cron that fires the `task_reminder` job function
+ * at the task's due date. Skips creation if the due date is within 10 seconds
+ * (Catalyst rejects crons too close to now).
+ * @param {object} catalystApp
+ * @param {string|number} taskId
+ * @param {string} dueDate - ISO timestamp
+ * @param {string} reminderEmail
+ * @returns {Promise<string|null>} Cron ID, or null if skipped/failed
+ */
 async function createReminderCron(catalystApp, taskId, dueDate, reminderEmail) {
   const dueMs = new Date(dueDate).getTime();
   const dueSeconds = Math.floor(dueMs / 1000);
@@ -105,6 +196,12 @@ async function createReminderCron(catalystApp, taskId, dueDate, reminderEmail) {
   }
 }
 
+/**
+ * Deletes a Catalyst Cron by ID. Safe to call with null/undefined — it no-ops.
+ * Errors are caught and logged as warnings so they never abort the main request.
+ * @param {object} catalystApp
+ * @param {string|null} cronId
+ */
 async function deleteReminderCron(catalystApp, cronId) {
   if (!cronId) return;
   try {
@@ -115,6 +212,14 @@ async function deleteReminderCron(catalystApp, cronId) {
   }
 }
 
+// ─── Row Mappers ──────────────────────────────────────────────────────────────
+
+/**
+ * Maps a raw Catalyst Datastore row (Services table) to a plain service object
+ * consumed by the frontend.
+ * @param {object} row
+ * @returns {object}
+ */
 function rowToService(row) {
   return {
     id: String(row.ROWID),
@@ -124,6 +229,14 @@ function rowToService(row) {
   };
 }
 
+/**
+ * Maps a raw Catalyst Datastore row (Tasks table) to a typed task object.
+ * Handles boolean coercion (Catalyst returns booleans as strings in some
+ * contexts), null-coalescing optional fields, and status-specific extras
+ * (e.g., date_completed only on completed tasks).
+ * @param {object} row
+ * @returns {object}
+ */
 function rowToTask(row) {
   const base = {
     id: String(row.ROWID),
@@ -144,6 +257,14 @@ function rowToTask(row) {
   return base;
 }
 
+/**
+ * Builds and returns the full application state snapshot by querying both
+ * tables in two ZCQL calls. Completed tasks are grouped by "YYYY-MM" month
+ * key so the frontend can render an archive selector. Overdue tasks are
+ * derived from active tasks — no separate DB column needed.
+ * @param {object} zcql - Catalyst ZCQL instance
+ * @returns {Promise<{services, tasks: {active, completed, pipeline}, overdue, last_updated}>}
+ */
 async function buildState(zcql) {
   // Fetch all services
   const svcRows = await zcql.executeZCQLQuery(`SELECT * FROM ${SERVICES_TABLE}`);
@@ -174,18 +295,21 @@ async function buildState(zcql) {
   };
 }
 
+// ─── Request Handler ────────────────────────────────────────────────────────────
 module.exports = async (req, res) => {
   try {
     const catalystApp = catalyst.initialize(req);
     const zcql = catalystApp.zcql();
     const dsServices = catalystApp.datastore().table(SERVICES_TABLE);
-    const dsTasks = catalystApp.datastore().table(TASKS_TABLE);
+    const dsTasks    = catalystApp.datastore().table(TASKS_TABLE);
 
+    // Catalyst Advanced I/O functions receive a raw Node.js request; there is no
+    // built-in router. We resolve routes by splitting the URL path and matching
+    // the last one or two segments together with the HTTP method.
     const parsedUrl = new URL(req.url, `https://${req.headers.host}`);
-    // URL pattern: /server/task_api/execute/<action>
     const pathParts = parsedUrl.pathname.split('/').filter(Boolean);
-    const action = pathParts[pathParts.length - 1]; // last segment
-    const method = req.method;
+    const action    = pathParts[pathParts.length - 1]; // last segment
+    const method    = req.method;
 
     // GET /state — return full state
     if (action === 'state' && method === 'GET') {
@@ -224,9 +348,11 @@ module.exports = async (req, res) => {
       return sendJson(res, 201, state);
     }
 
-    // DELETE /services/:id — delete_service
+    // DELETE /services/:id — delete service, all its tasks, and its Stratus logo
     if (action !== 'services' && pathParts[pathParts.length - 2] === 'services' && method === 'DELETE') {
       const serviceId = action;
+      if (!isValidId(serviceId)) return sendJson(res, 400, { error: 'Invalid service ID.' });
+
       const svcRows = await zcql.executeZCQLQuery(
         `SELECT ROWID, logo_url FROM ${SERVICES_TABLE} WHERE ROWID = ${serviceId}`
       );
@@ -247,11 +373,19 @@ module.exports = async (req, res) => {
         }
       }
 
-      // Delete all tasks for this service
+      // Fetch tasks for this service (including cron IDs so we can clean up reminders)
       const taskRows = await zcql.executeZCQLQuery(
-        `SELECT ROWID FROM ${TASKS_TABLE} WHERE service_id = '${serviceId}'`
+        `SELECT ROWID, cron_id FROM ${TASKS_TABLE} WHERE service_id = '${serviceId}'`
       );
       if (taskRows.length > 0) {
+        // Cancel all active reminder crons before deleting the rows; otherwise
+        // the cron fires after deletion and the job function finds no task.
+        await Promise.all(
+          taskRows
+            .map((r) => r[TASKS_TABLE].cron_id)
+            .filter(Boolean)
+            .map((cronId) => deleteReminderCron(catalystApp, cronId))
+        );
         const rowids = taskRows.map((r) => r[TASKS_TABLE].ROWID);
         await dsTasks.deleteRows(rowids);
       }
@@ -321,9 +455,10 @@ module.exports = async (req, res) => {
       return sendJson(res, 201, state);
     }
 
-    // PUT /tasks/:id/push-to-pipeline — move any active/completed task back to pipeline
+    // PUT /tasks/:id/push-to-pipeline — move any active/completed task to the pipeline backlog
     if (pathParts[pathParts.length - 1] === 'push-to-pipeline' && pathParts[pathParts.length - 3] === 'tasks' && method === 'PUT') {
       const taskId = pathParts[pathParts.length - 2];
+      if (!isValidId(taskId)) return sendJson(res, 400, { error: 'Invalid task ID.' });
       const body = await getBody(req);
       const taskRows = await zcql.executeZCQLQuery(
         `SELECT * FROM ${TASKS_TABLE} WHERE ROWID = ${taskId}`
@@ -352,9 +487,10 @@ module.exports = async (req, res) => {
       return sendJson(res, 200, state);
     }
 
-    // PUT /tasks/:id/activate — activate pipeline task
+    // PUT /tasks/:id/activate — promote a pipeline task to active status
     if (pathParts[pathParts.length - 1] === 'activate' && pathParts[pathParts.length - 3] === 'tasks' && method === 'PUT') {
       const taskId = pathParts[pathParts.length - 2];
+      if (!isValidId(taskId)) return sendJson(res, 400, { error: 'Invalid task ID.' });
       const body = await getBody(req);
       const taskRows = await zcql.executeZCQLQuery(
         `SELECT * FROM ${TASKS_TABLE} WHERE ROWID = ${taskId} AND status = 'pipeline'`
@@ -387,9 +523,10 @@ module.exports = async (req, res) => {
       return sendJson(res, 200, state);
     }
 
-    // PUT /tasks/:id/complete — complete_task
+    // PUT /tasks/:id/complete — mark an active task as completed
     if (pathParts[pathParts.length - 1] === 'complete' && pathParts[pathParts.length - 3] === 'tasks' && method === 'PUT') {
       const taskId = pathParts[pathParts.length - 2];
+      if (!isValidId(taskId)) return sendJson(res, 400, { error: 'Invalid task ID.' });
       const body = await getBody(req);
       const taskRows = await zcql.executeZCQLQuery(
         `SELECT * FROM ${TASKS_TABLE} WHERE ROWID = ${taskId} AND status = 'active'`
@@ -404,9 +541,10 @@ module.exports = async (req, res) => {
       return sendJson(res, 200, state);
     }
 
-    // DELETE /tasks/:id — delete_task
+    // DELETE /tasks/:id — hard-delete a task and cancel its reminder cron
     if (pathParts[pathParts.length - 2] === 'tasks' && method === 'DELETE') {
       const taskId = action;
+      if (!isValidId(taskId)) return sendJson(res, 400, { error: 'Invalid task ID.' });
       const taskRows = await zcql.executeZCQLQuery(
         `SELECT ROWID, cron_id FROM ${TASKS_TABLE} WHERE ROWID = ${taskId}`
       );
@@ -418,9 +556,13 @@ module.exports = async (req, res) => {
       return sendJson(res, 200, state);
     }
 
-    // PUT /tasks/:id — update_task (active or pipeline)
+    // PUT /tasks/:id — generic update dispatched by task status:
+    //   pipeline  → title, description, pipeline_reason only
+    //   completed → final_thoughts only
+    //   active    → any field; cron lifecycle is managed automatically
     if (pathParts[pathParts.length - 2] === 'tasks' && method === 'PUT') {
       const taskId = action;
+      if (!isValidId(taskId)) return sendJson(res, 400, { error: 'Invalid task ID.' });
       const body = await getBody(req);
       const taskRows = await zcql.executeZCQLQuery(
         `SELECT * FROM ${TASKS_TABLE} WHERE ROWID = ${taskId}`
@@ -468,7 +610,10 @@ module.exports = async (req, res) => {
         updates.days_assigned = calcDaysAssigned(existing.date_added, nextDueDate);
       }
 
-      // Dynamic cron lifecycle management
+      // Dynamic cron lifecycle for active task updates:
+      // \u2022 If reminder was ON and due date changed \u2192 delete old cron, create new one at the new time
+      // \u2022 If reminder was toggled OFF              \u2192 delete old cron, clear cron_id
+      // \u2022 If reminder was toggled ON               \u2192 create new cron (none existed yet)
       const existingCronId = rawTask.cron_id || null;
       const wasReminder = rawTask.reminder === true || rawTask.reminder === 'true';
       const newReminder = updates.reminder !== undefined ? updates.reminder : wasReminder;

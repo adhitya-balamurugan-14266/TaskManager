@@ -7,6 +7,7 @@ import { WorkspacePage } from '@/pages/WorkspacePage';
 import type { Service } from '@/types';
 import { Sun, Moon } from 'lucide-react';
 
+/** Top-level error toast displayed when any API call fails. Auto-dismissed by the user. */
 function ErrorToast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   return (
     <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-xl bg-red-600 text-white px-4 py-3 shadow-lg text-sm max-w-sm">
@@ -27,8 +28,9 @@ export default function App() {
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
   });
 
+  // Sync the `dark` class on <html> with state and persist the preference.
+  // Tailwind's @variant dark rule keys off this class (configured in index.css).
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', isDark);
     localStorage.setItem('task_manager_theme', isDark ? 'dark' : 'light');
   }, [isDark]);
 
@@ -41,7 +43,8 @@ export default function App() {
     return <SetupPage onSave={handleSetupEmail} />;
   }
 
-  // Keep selected service in sync with updated state (e.g. after rename)
+  // Keep the selected service object in sync with the latest state so that
+  // any rename or update is reflected in the service detail header.
   const currentService = selectedService
     ? (tm.state.services.find((s) => s.id === selectedService.id) ?? null)
     : null;

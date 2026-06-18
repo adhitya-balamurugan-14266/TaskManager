@@ -1,3 +1,16 @@
+/**
+ * useTaskManager — central state hook
+ *
+ * Owns the AppState, loading flag, and error message for the entire app.
+ * All mutations go through `dispatch`, which:
+ *   1. Sets loading=true
+ *   2. Calls the engine function (which hits the API and returns a fresh state)
+ *   3. Replaces the local state with the server response (single source of truth)
+ *   4. Clears or sets the error accordingly
+ *
+ * Because the server always returns the full state after every mutation, there
+ * is no need for optimistic updates or local state merging.
+ */
 import { useState, useCallback, useEffect } from 'react';
 import { loadState } from '@/store/engine';
 import * as engine from '@/store/engine';
@@ -34,6 +47,10 @@ export function useTaskManager() {
     });
   }, []);
 
+  /**
+   * Calls an engine function and replaces state with the server response.
+   * All action creators below delegate to this so error handling is centralised.
+   */
   async function dispatch<T>(fn: (s: AppState, p: T) => Promise<AppState | { error: string }>, payload: T) {
     setLoading(true);
     const result = await fn(state, payload);

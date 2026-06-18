@@ -1,3 +1,14 @@
+/**
+ * store/engine.ts — API client layer
+ *
+ * All communication with the `task_api` Catalyst function lives here.
+ * Every exported function takes the current AppState (unused at runtime—kept
+ * for the `dispatch` signature in useTaskManager) and a typed payload, then
+ * returns either a fresh AppState on success or `{ error: string }` on failure.
+ *
+ * The BASE_URL can be overridden at build time via VITE_TASK_API_BASE_URL;
+ * otherwise it defaults to the Catalyst development environment endpoint.
+ */
 import type {
   AppState,
   CreateServicePayload,
@@ -14,6 +25,11 @@ const BASE_URL =
   import.meta.env.VITE_TASK_API_BASE_URL ??
   'https://taskmanager-60047186223.development.catalystserverless.in/server/task_api/execute';
 
+/**
+ * Generic HTTP wrapper. Sets Content-Type only when a body is present to
+ * avoid triggering CORS preflight on GET requests. Returns { error } on
+ * any non-2xx status or network failure.
+ */
 async function apiFetch(path: string, options?: RequestInit): Promise<AppState | { error: string }> {
   try {
     const headers = new Headers(options?.headers ?? {});
@@ -42,10 +58,17 @@ async function apiFetch(path: string, options?: RequestInit): Promise<AppState |
   }
 }
 
+/** Fetches the full application state snapshot from the server. */
 export async function loadState(): Promise<AppState | { error: string }> {
   return apiFetch('/state');
 }
 
+/**
+ * Requests a short-lived presigned PUT URL from Stratus so the browser can
+ * upload a logo image directly without routing through the function.
+ * Returns both the presigned URL (for the PUT) and the final public object URL
+ * (to save in the Services table).
+ */
 export async function getLogoUploadUrl(filename: string): Promise<{ presigned_url: string; object_url: string } | { error: string }> {
   try {
     const res = await fetch(`${BASE_URL}/services/logo-upload`, {
