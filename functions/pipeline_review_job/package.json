@@ -1,0 +1,9 @@
+{
+  "name": "pipeline_review_job",
+  "version": "1.0.0",
+  "description": "Daily cron job that sends 2-week pipeline review alert emails",
+  "main": "index.js",
+  "dependencies": {
+    "zcatalyst-sdk-node": "latest"
+  }
+}

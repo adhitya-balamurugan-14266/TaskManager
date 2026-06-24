@@ -53,9 +53,25 @@ export interface PipelineTask {
   date_added: string;
   status: 'pipeline';
   pipeline_reason: string | null;
+  /** ISO timestamp of when the task entered (or was last reviewed in) the pipeline. */
+  pipeline_entered_at: string | null;
+  /** Whether the 2-week pipeline alert has been sent for the current review cycle. */
+  pipeline_alerted: boolean;
 }
 
-export type Task = ActiveTask | CompletedTask | PipelineTask;
+/** A task that was reviewed and intentionally dropped from the pipeline. */
+export interface DroppedTask {
+  id: string;
+  title: string;
+  description: string | null;
+  service_id: string;
+  date_added: string;
+  status: 'dropped';
+  dropped_reason: string;
+  dropped_date: string;
+}
+
+export type Task = ActiveTask | CompletedTask | PipelineTask | DroppedTask;
 
 export interface OverdueTask {
   id: string;
@@ -75,6 +91,7 @@ export interface AppState {
     active: ActiveTask[];
     completed: Record<string, CompletedTask[]>; // keyed by "YYYY-MM"
     pipeline: PipelineTask[];
+    dropped: DroppedTask[];
   };
   overdue: OverdueTask[];
   last_updated: string;
@@ -119,4 +136,12 @@ export interface ActivateTaskPayload {
 export interface MoveToPipelinePayload {
   task_id: string;
   reason?: string;
+}
+export interface DropTaskPayload {
+  task_id: string;
+  dropped_reason: string;
+}
+export interface PipelineReviewPayload {
+  task_id: string;
+  reason: string;
 }

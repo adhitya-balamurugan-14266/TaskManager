@@ -24,11 +24,13 @@ import type {
   UpdateTaskPayload,
   ActivateTaskPayload,
   MoveToPipelinePayload,
+  DropTaskPayload,
+  PipelineReviewPayload,
 } from '@/types';
 
 const EMPTY_STATE: AppState = {
   services: [],
-  tasks: { active: [], completed: {}, pipeline: [] },
+  tasks: { active: [], completed: {}, pipeline: [], dropped: [] },
   overdue: [],
   last_updated: new Date().toISOString(),
 };
@@ -78,6 +80,8 @@ export function useTaskManager() {
     updateTask: (p: UpdateTaskPayload) => dispatch(engine.updateTask, p),
     activateTask: (p: ActivateTaskPayload) => dispatch(engine.activateTask, p),
     moveToPipeline: (p: MoveToPipelinePayload) => dispatch(engine.moveToPipeline, p),
+    dropTask: (p: DropTaskPayload) => dispatch(engine.dropTask, p),
+    pipelineReview: (p: PipelineReviewPayload) => dispatch(engine.pipelineReview, p),
     getLogoUploadUrl: engine.getLogoUploadUrl,
   };
 }

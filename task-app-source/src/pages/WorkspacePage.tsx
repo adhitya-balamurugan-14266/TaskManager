@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import type { AppState, Service, ActiveTask, CompletedTask, PipelineTask } from '@/types';
+import type { AppState, Service, ActiveTask, CompletedTask, PipelineTask, DroppedTask } from '@/types';
 import { Modal } from '@/components/Modal';
 import { Badge } from '@/components/Badge';
 import { formatDateTime } from '@/lib/utils';
@@ -13,6 +13,7 @@ import {
   Building2,
   Layers,
   Search,
+  XCircle,
 } from 'lucide-react';
 
 interface WorkspacePageProps {
@@ -25,7 +26,8 @@ type SelectedTask =
   | { kind: 'active'; task: ActiveTask; service: Service }
   | { kind: 'completed'; task: CompletedTask; service: Service }
   | { kind: 'overdue'; task: ActiveTask; service: Service; days_overdue: number }
-  | { kind: 'pipeline'; task: PipelineTask; service: Service };
+  | { kind: 'pipeline'; task: PipelineTask; service: Service }
+  | { kind: 'dropped'; task: DroppedTask; service: Service };
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
@@ -72,7 +74,7 @@ function TaskKanbanCard({
   serviceName: string;
   serviceLogoUrl: string | null;
   dueDate?: string;
-  status: 'active' | 'completed' | 'overdue' | 'pipeline';
+  status: 'active' | 'completed' | 'overdue' | 'pipeline' | 'dropped';
   daysOverdue?: number;
   isPriority?: boolean;
   onClick: () => void;
@@ -90,7 +92,9 @@ function TaskKanbanCard({
     <button
       onClick={onClick}
       className={`w-full text-left rounded-xl border p-3 hover:shadow-md transition-all ${
-        isPriority
+        status === 'dropped'
+          ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 opacity-70 hover:opacity-90'
+          : isPriority
           ? 'border-red-400 dark:border-red-600 bg-red-50 dark:bg-red-950/30 ring-1 ring-red-400 dark:ring-red-600 hover:border-red-500'
           : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-blue-300 dark:hover:border-blue-600'
       }`}
@@ -104,7 +108,9 @@ function TaskKanbanCard({
         }
         {dueDate && <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0 mt-0.5">{dueDateShort}</span>}
       </div>
-      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 line-clamp-2 leading-snug">
+      <p className={`text-sm font-semibold line-clamp-2 leading-snug ${
+        status === 'dropped' ? 'text-gray-400 dark:text-gray-500 line-through' : 'text-gray-900 dark:text-gray-100'
+      }`}>
         {title}
       </p>
       {description && (
@@ -158,6 +164,8 @@ function TaskDetailContent({
               ? 'completed'
               : selected.kind === 'pipeline'
               ? 'pipeline'
+              : selected.kind === 'dropped'
+              ? 'dropped'
               : 'overdue'
           }
         >
@@ -175,7 +183,7 @@ function TaskDetailContent({
       )}
 
       {/* Detail grid */}
-      {selected.kind !== 'pipeline' && (
+      {selected.kind !== 'pipeline' && selected.kind !== 'dropped' && (
         <div className="grid grid-cols-2 gap-2.5">
           <div className="rounded-xl bg-gray-50 dark:bg-gray-800 px-3 py-2.5">
             <p className="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Due Date</p>
@@ -203,6 +211,40 @@ function TaskDetailContent({
       {selected.kind === 'pipeline' && (
         <div className="rounded-xl bg-violet-50 dark:bg-violet-900/20 px-3 py-2.5 text-sm text-violet-700 dark:text-violet-300">
           This task is in the pipeline. Go to the service to set a schedule and activate it.
+        </div>
+      )}
+
+      {selected.kind === 'dropped' && (
+        <div className="space-y-2">
+          <div className="rounded-xl bg-gray-50 dark:bg-gray-800 px-3 py-2.5">
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Dropped On</p>
+            <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
+              {formatDateTime(selected.task.dropped_date)}
+            </p>
+          </div>
+          <div className="rounded-xl bg-gray-50 dark:bg-gray-800 px-3 py-2.5">
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Reason for dropping</p>
+            <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+              {selected.task.dropped_reason}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {selected.kind === 'dropped' && (
+        <div className="space-y-2">
+          <div className="rounded-xl bg-gray-50 dark:bg-gray-800 px-3 py-2.5">
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Dropped On</p>
+            <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
+              {formatDateTime(selected.task.dropped_date)}
+            </p>
+          </div>
+          <div className="rounded-xl bg-gray-50 dark:bg-gray-800 px-3 py-2.5">
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Reason for dropping</p>
+            <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+              {selected.task.dropped_reason}
+            </p>
+          </div>
         </div>
       )}
 
@@ -237,6 +279,9 @@ export function WorkspacePage({ state, onBack, onSelectService }: WorkspacePageP
     });
   const completedTasks = Object.values(state.tasks.completed).flat();
   const pipelineTasks = state.tasks.pipeline ?? [];
+  const droppedTasks = (state.tasks.dropped ?? []).sort(
+    (a, b) => new Date(b.dropped_date).getTime() - new Date(a.dropped_date).getTime()
+  );
   const overdueTasks = state.overdue
     .map((o) => ({ o, task: state.tasks.active.find((t) => t.id === o.id) }))
     .filter((x): x is { o: (typeof state.overdue)[0]; task: ActiveTask } => x.task != null)
@@ -252,9 +297,10 @@ export function WorkspacePage({ state, onBack, onSelectService }: WorkspacePageP
   const visibleActive = activeTasks.filter(filterTask);
   const visibleCompleted = completedTasks.filter(filterTask);
   const visiblePipeline = pipelineTasks.filter(filterTask);
+  const visibleDropped = droppedTasks.filter(filterTask);
   const visibleOverdue = overdueTasks.filter((x) => filterTask(x.task));
 
-  function openCard(kind: 'active' | 'completed' | 'overdue' | 'pipeline', taskId: string) {
+  function openCard(kind: 'active' | 'completed' | 'overdue' | 'pipeline' | 'dropped', taskId: string) {
     if (kind === 'active') {
       const task = activeTasks.find((t) => t.id === taskId);
       const service = task ? serviceMap[task.service_id] : undefined;
@@ -267,6 +313,10 @@ export function WorkspacePage({ state, onBack, onSelectService }: WorkspacePageP
       const task = pipelineTasks.find((t) => t.id === taskId);
       const service = task ? serviceMap[task.service_id] : undefined;
       if (task && service) setSelected({ kind: 'pipeline', task, service });
+    } else if (kind === 'dropped') {
+      const task = droppedTasks.find((t) => t.id === taskId);
+      const service = task ? serviceMap[task.service_id] : undefined;
+      if (task && service) setSelected({ kind: 'dropped', task, service });
     } else {
       const entry = overdueTasks.find((x) => x.task.id === taskId);
       const service = entry ? serviceMap[entry.task.service_id] : undefined;
@@ -304,7 +354,7 @@ export function WorkspacePage({ state, onBack, onSelectService }: WorkspacePageP
               <div>
                 <h1 className="text-xl font-bold text-gray-900 dark:text-white">My Workspace</h1>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {activeTasks.length} active · {pipelineTasks.length} pipeline · {completedTasks.length} completed · {overdueTasks.length} overdue
+                  {activeTasks.length} active · {pipelineTasks.length} pipeline · {completedTasks.length} completed · {overdueTasks.length} overdue{droppedTasks.length > 0 ? ` · ${droppedTasks.length} dropped` : ''}
                 </p>
               </div>
             </div>
@@ -376,7 +426,33 @@ export function WorkspacePage({ state, onBack, onSelectService }: WorkspacePageP
 
       {/* Kanban board */}
       <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-5">
+          {/* ── Dropped ── */}
+          <KanbanColumn
+            title="Dropped"
+            count={visibleDropped.length}
+            headerClass="bg-gray-500 text-white"
+            icon={<XCircle className="size-4" />}
+          >
+            {visibleDropped.length === 0 ? (
+              <p className="text-center text-xs text-gray-400 dark:text-gray-600 py-10">
+                No dropped tasks
+              </p>
+            ) : (
+              visibleDropped.map((t) => (
+                <TaskKanbanCard
+                  key={t.id}
+                  title={t.title}
+                  description={t.description}
+                  serviceName={serviceMap[t.service_id]?.name ?? '—'}
+                  serviceLogoUrl={serviceMap[t.service_id]?.logo_url ?? null}
+                  status="dropped"
+                  onClick={() => openCard('dropped', t.id)}
+                />
+              ))
+            )}
+          </KanbanColumn>
+
           {/* ── Pipeline ── */}
           <KanbanColumn
             title="Pipeline"
@@ -402,6 +478,7 @@ export function WorkspacePage({ state, onBack, onSelectService }: WorkspacePageP
               ))
             )}
           </KanbanColumn>
+
           {/* ── Active ── */}
           <KanbanColumn
             title="Active"

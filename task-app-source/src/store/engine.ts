@@ -19,6 +19,8 @@ import type {
   UpdateTaskPayload,
   ActivateTaskPayload,
   MoveToPipelinePayload,
+  DropTaskPayload,
+  PipelineReviewPayload,
 } from '@/types';
 
 const BASE_URL =
@@ -118,4 +120,14 @@ export async function activateTask(_state: AppState, payload: ActivateTaskPayloa
 export async function moveToPipeline(_state: AppState, payload: MoveToPipelinePayload) {
   const { task_id, ...body } = payload;
   return apiFetch(`/tasks/${task_id}/push-to-pipeline`, { method: 'PUT', body: JSON.stringify(body) });
+}
+
+export async function dropTask(_state: AppState, payload: DropTaskPayload) {
+  const { task_id, ...body } = payload;
+  return apiFetch(`/tasks/${task_id}/drop`, { method: 'PUT', body: JSON.stringify(body) });
+}
+
+export async function pipelineReview(_state: AppState, payload: PipelineReviewPayload) {
+  const { task_id, ...body } = payload;
+  return apiFetch(`/tasks/${task_id}/pipeline-review`, { method: 'PUT', body: JSON.stringify(body) });
 }

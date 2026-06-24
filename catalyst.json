@@ -7,7 +7,7 @@
   ],
   "functions": {
     "base_dir": "functions",
-    "targets": ["task_api", "task_reminder"]
+    "targets": ["task_api", "task_reminder", "pipeline_review_job"]
   }
 }
 

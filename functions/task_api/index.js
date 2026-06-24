@@ -14,6 +14,8 @@
  *   PUT  /tasks/:id/push-to-pipeline    — move any task to pipeline
  *   PUT  /tasks/:id/activate            — activate a pipeline task
  *   PUT  /tasks/:id/complete            — complete an active task
+ *   PUT  /tasks/:id/drop                — drop a pipeline task (with reason)
+ *   PUT  /tasks/:id/pipeline-review     — keep in pipeline with reason; resets 2-week timer
  *   DELETE /tasks/:id                   — delete a task
  *   PUT  /tasks/:id                     — generic update (active / pipeline / completed)
  */
@@ -250,8 +252,12 @@ function rowToTask(row) {
     reminder_email: row.reminder_email || null,
     status: row.status,
     pipeline_reason: row.pipeline_reason || null,
+    pipeline_entered_at: row.pipeline_entered_at || null,
+    pipeline_alerted: row.pipeline_alerted === true || row.pipeline_alerted === 'true',
     final_thoughts: row.final_thoughts || null,
     is_priority: row.is_priority === true || row.is_priority === 'true',
+    dropped_reason: row.dropped_reason || null,
+    dropped_date: row.dropped_date || null,
   };
   if (row.status === 'completed') base.date_completed = row.date_completed;
   return base;
@@ -277,6 +283,7 @@ async function buildState(zcql) {
   const pipeline = allTasks.filter((t) => t.status === 'pipeline');
   const active = allTasks.filter((t) => t.status === 'active');
   const completedFlat = allTasks.filter((t) => t.status === 'completed');
+  const dropped = allTasks.filter((t) => t.status === 'dropped');
 
   const completed = {};
   for (const t of completedFlat) {
@@ -289,7 +296,7 @@ async function buildState(zcql) {
 
   return {
     services,
-    tasks: { active, completed, pipeline },
+    tasks: { active, completed, pipeline, dropped },
     overdue,
     last_updated: new Date().toISOString(),
   };
@@ -421,6 +428,8 @@ module.exports = async (req, res) => {
           status: 'pipeline',
           date_completed: null,
           cron_id: null,
+          pipeline_entered_at: date_added,
+          pipeline_alerted: false,
         });
         const state = await buildState(zcql);
         return sendJson(res, 201, state);
@@ -471,6 +480,7 @@ module.exports = async (req, res) => {
       await deleteReminderCron(catalystApp, existingRaw.cron_id || null);
 
       const reason = body.reason ? String(body.reason).trim() : null;
+      const now = new Date().toISOString();
       await dsTasks.updateRow({
         ROWID: taskId,
         status: 'pipeline',
@@ -481,6 +491,63 @@ module.exports = async (req, res) => {
         cron_id: null,
         date_completed: null,
         pipeline_reason: reason || null,
+        pipeline_entered_at: now,
+        pipeline_alerted: false,
+      });
+
+      const state = await buildState(zcql);
+      return sendJson(res, 200, state);
+    }
+
+    // PUT /tasks/:id/drop — move a pipeline task to dropped status
+    if (pathParts[pathParts.length - 1] === 'drop' && pathParts[pathParts.length - 3] === 'tasks' && method === 'PUT') {
+      const taskId = pathParts[pathParts.length - 2];
+      if (!isValidId(taskId)) return sendJson(res, 400, { error: 'Invalid task ID.' });
+      const body = await getBody(req);
+      const { dropped_reason } = body;
+      if (!dropped_reason || !String(dropped_reason).trim()) {
+        return sendJson(res, 400, { error: 'dropped_reason is required.' });
+      }
+      const taskRows = await zcql.executeZCQLQuery(
+        `SELECT * FROM ${TASKS_TABLE} WHERE ROWID = ${taskId} AND status = 'pipeline'`
+      );
+      if (taskRows.length === 0) return sendJson(res, 404, { error: `Task "${taskId}" not found in pipeline.` });
+
+      const dropped_date = new Date().toISOString();
+      await dsTasks.updateRow({
+        ROWID: taskId,
+        status: 'dropped',
+        pipeline_reason: null,
+        pipeline_entered_at: null,
+        pipeline_alerted: false,
+        dropped_reason: String(dropped_reason).trim(),
+        dropped_date,
+      });
+
+      const state = await buildState(zcql);
+      return sendJson(res, 200, state);
+    }
+
+    // PUT /tasks/:id/pipeline-review — keep in pipeline; reset 2-week timer
+    if (pathParts[pathParts.length - 1] === 'pipeline-review' && pathParts[pathParts.length - 3] === 'tasks' && method === 'PUT') {
+      const taskId = pathParts[pathParts.length - 2];
+      if (!isValidId(taskId)) return sendJson(res, 400, { error: 'Invalid task ID.' });
+      const body = await getBody(req);
+      const { reason } = body;
+      if (!reason || !String(reason).trim()) {
+        return sendJson(res, 400, { error: 'reason is required.' });
+      }
+      const taskRows = await zcql.executeZCQLQuery(
+        `SELECT * FROM ${TASKS_TABLE} WHERE ROWID = ${taskId} AND status = 'pipeline'`
+      );
+      if (taskRows.length === 0) return sendJson(res, 404, { error: `Task "${taskId}" not found in pipeline.` });
+
+      const now = new Date().toISOString();
+      await dsTasks.updateRow({
+        ROWID: taskId,
+        pipeline_reason: String(reason).trim(),
+        pipeline_entered_at: now,
+        pipeline_alerted: false,
       });
 
       const state = await buildState(zcql);

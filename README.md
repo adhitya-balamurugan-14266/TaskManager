@@ -31,6 +31,17 @@ A full-stack task management application built on **Zoho Catalyst** — manage s
 - Activate a pipeline task when ready: assign a due date and optional reminder.
 - Edit pipeline tasks (title, description, pipeline reason) inline.
 - Pipeline reason is shown in a violet callout on each pipeline card.
+- Tasks in the pipeline for **2+ weeks** receive an amber **"2-week review"** badge on their card.
+- Clicking a pipeline card (or its **Review** button) opens a review modal with two options:
+  - **Drop Task** — requires a reason; moves the task to the Dropped section.
+  - **Keep in Pipeline** — requires a reason; resets the 2-week timer.
+- A **daily cron** (`pipe_review_daily`, runs at midnight) automatically emails an alert listing all pipeline tasks that have exceeded the 2-week threshold and haven't been reviewed yet.
+
+### Dropped Tasks
+- Tasks that are deliberately removed from the pipeline are moved to a **Dropped** status.
+- A **Dropped** tab in each service's task view shows all dropped tasks for that service, with strikethrough titles, the drop reason, and drop date.
+- Dropped tasks can be **restored to the pipeline** from the Dropped tab.
+- The **My Workspace** Kanban board includes a **Dropped** column as the first column.
 
 ### Final Thoughts
 - Optionally add a **Final Thoughts** note when completing a task.
@@ -46,14 +57,14 @@ A full-stack task management application built on **Zoho Catalyst** — manage s
 - Tasks past their due date are automatically surfaced in an **Overdue** tab per service and in the global Workspace dashboard.
 
 ### My Workspace (Kanban Dashboard)
-- Four-column Kanban board: **Pipeline**, **Active**, **Completed**, **Overdue** — all tasks across all services in one view.
-- Search bar in the header filters all four columns live as you type.
-- Click any card for full task details in a side sheet.
+- Five-column Kanban board: **Dropped**, **Pipeline**, **Active**, **Completed**, **Overdue** — all tasks across all services in one view.
+- Search bar in the header filters all five columns live as you type.
+- Click any card for full task details in a side sheet, including drop reason for dropped tasks.
 - Jump to any service directly via the ⋯ meatball menu.
 
 ### Search
-- **Service detail view** — search bar above tabs filters the active, overdue, pipeline, and completed task lists by title or description.
-- **Workspace / Kanban** — search bar in the sticky header filters all four columns simultaneously.
+- **Service detail view** — search bar above tabs filters the active, overdue, pipeline, completed, and dropped task lists by title or description.
+- **Workspace / Kanban** — search bar in the sticky header filters all five columns simultaneously.
 
 ### Dark / Light Mode
 - Toggle between dark and light themes via the **Sun/Moon** button fixed in the bottom-right corner.
@@ -73,10 +84,10 @@ A full-stack task management application built on **Zoho Catalyst** — manage s
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS v4 |
 | Hosting | Catalyst Slate (static) |
 | API | Catalyst Advanced I/O Function (`task_api`) — Node.js 20 |
-| Job Function | Catalyst Job Function (`task_reminder`) — Node.js 20 |
+| Job Functions | `task_reminder` (due-date email), `pipeline_review_job` (daily pipeline alert) — Node.js 20 |
 | Database | Catalyst Datastore (ZCQL) — `Services` + `Tasks` tables |
 | Object Storage | Catalyst Stratus — bucket `taskmanager-175003` |
-| Scheduling | Catalyst Job Scheduling (one-time Cron per task) |
+| Scheduling | Catalyst Job Scheduling — one-time crons (reminders) + daily cron (pipeline review) |
 | Email | Catalyst Mail |
 | SDK | `zcatalyst-sdk-node` |
 
@@ -91,7 +102,10 @@ TaskManager/
 │   ├── task_api/                  # Advanced I/O REST API
 │   │   ├── index.js
 │   │   └── package.json
-│   └── task_reminder/             # Job function — sends reminder email
+│   ├── task_reminder/             # Job function — sends due-date reminder email
+│   │   ├── index.js
+│   │   └── package.json
+│   └── pipeline_review_job/       # Job function — daily pipeline 2-week alert email
 │       ├── index.js
 │       └── package.json
 ├── task-app-source/               # Vite + React source
@@ -101,13 +115,14 @@ TaskManager/
 │   │   ├── pages/
 │   │   │   ├── SetupPage.tsx          # First-run email setup
 │   │   │   ├── ServicesPage.tsx       # Services list + create modal
-│   │   │   ├── ServiceDetailPage.tsx  # Tasks per service (tabs + search)
-│   │   │   └── WorkspacePage.tsx      # Kanban dashboard (search + dark mode)
+│   │   │   ├── ServiceDetailPage.tsx  # Tasks per service (tabs + search incl. Dropped)
+│   │   │   └── WorkspacePage.tsx      # Kanban dashboard (5 columns, search, dark mode)
 │   │   ├── components/
 │   │   │   ├── TaskCard.tsx           # Active task card (priority, pipeline, complete)
 │   │   │   ├── CompletedTaskCard.tsx  # Completed card (final thoughts, pipeline)
-│   │   │   ├── PipelineTaskCard.tsx   # Pipeline card (edit, activate)
-│   │   │   ├── Badge.tsx              # Status badges incl. priority
+│   │   │   ├── PipelineTaskCard.tsx   # Pipeline card (review modal, 2-week badge)
+│   │   │   ├── DroppedTaskCard.tsx    # Dropped task card (restore, delete)
+│   │   │   ├── Badge.tsx              # Status badges incl. priority + dropped
 │   │   │   ├── Button.tsx
 │   │   │   ├── Modal.tsx
 │   │   │   └── Input.tsx
@@ -125,7 +140,7 @@ TaskManager/
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/execute/state` | Fetch full app state (services, tasks, overdue) |
+| `GET` | `/execute/state` | Fetch full app state (services, tasks, overdue, dropped) |
 | `POST` | `/execute/services` | Create a service (name, optional logo_url) |
 | `DELETE` | `/execute/services/:id` | Delete a service and all its tasks + Stratus logo |
 | `POST` | `/execute/services/logo-upload` | Get a presigned Stratus PUT URL for logo upload |
@@ -134,6 +149,8 @@ TaskManager/
 | `PUT` | `/execute/tasks/:id/complete` | Mark a task completed (with optional final thoughts) |
 | `PUT` | `/execute/tasks/:id/push-to-pipeline` | Move a task to pipeline (with optional reason) |
 | `PUT` | `/execute/tasks/:id/activate` | Activate a pipeline task (assign due date + reminder) |
+| `PUT` | `/execute/tasks/:id/drop` | Drop a pipeline task (requires reason) |
+| `PUT` | `/execute/tasks/:id/pipeline-review` | Keep task in pipeline and reset its 2-week timer |
 | `DELETE` | `/execute/tasks/:id` | Delete a task |
 
 ---
@@ -159,13 +176,17 @@ TaskManager/
 | `due_date` | varchar | Full UTC ISO string (null for pipeline tasks) |
 | `reminder` | boolean | Enable email reminder |
 | `reminder_email` | varchar | Recipient address |
-| `status` | varchar | `active`, `completed`, or `pipeline` |
+| `status` | varchar | `active`, `completed`, `pipeline`, or `dropped` |
 | `date_completed` | varchar | ISO timestamp when completed |
 | `cron_id` | varchar | Catalyst Cron ID for the reminder job |
 | `is_pipeline` | boolean | True when task is in pipeline queue |
 | `pipeline_reason` | varchar | Optional reason for moving to pipeline |
 | `final_thoughts` | text | Optional completion note |
 | `is_priority` | boolean | True when task is marked as priority |
+| `pipeline_entered_at` | varchar | ISO timestamp when task entered the pipeline |
+| `pipeline_alerted` | boolean | True after a 2-week pipeline alert email has been sent |
+| `dropped_reason` | varchar | Reason provided when dropping a pipeline task |
+| `dropped_date` | varchar | ISO timestamp when the task was dropped |
 
 ---
 
@@ -209,11 +230,19 @@ catalyst deploy --only slate:task-manager
 catalyst deploy --only functions:task_api
 ```
 
-### Environment Variables (set on `task_reminder` function in Catalyst Console)
+### Environment Variables
+
+**`task_reminder` function:**
 | Variable | Description |
 |---|---|
-| `MAIL_FROM_ADDRESS` | Sender email address for reminders |
-| `MAIL_TO` | Fallback recipient if task has no reminder_email |
+| `MAIL_FROM_ADDRESS` | Sender email address for due-date reminder emails |
+| `MAIL_TO_ADDRESS` | Fallback recipient if task has no `reminder_email` |
+
+**`pipeline_review_job` function:**
+| Variable | Description |
+|---|---|
+| `MAIL_FROM_ADDRESS` | Sender email address for pipeline alert emails |
+| `MAIL_TO_ADDRESS` | Recipient for pipeline review alert emails |
 
 ---
 
@@ -225,7 +254,7 @@ This project was developed end-to-end using the **[Catalyst MCP (Model Context P
 
 | Capability | How it was used |
 |---|---|
-| **DataStore operations** | Created and modified `Services` and `Tasks` tables; added columns (`is_pipeline`, `pipeline_reason`, `final_thoughts`, `is_priority`); updated column constraints (nullable `due_date`, `days_assigned`) |
+| **DataStore operations** | Created and modified `Services` and `Tasks` tables; added columns (`is_pipeline`, `pipeline_reason`, `final_thoughts`, `is_priority`, `pipeline_entered_at`, `pipeline_alerted`, `dropped_reason`, `dropped_date`); updated column constraints (nullable `due_date`, `days_assigned`) |
 | **Function management** | Inspected function configs, environment variables, and deployment status for `task_api` and `task_reminder` |
 | **Cron / Job Scheduling** | Created, verified, and managed one-time cron jobs for task reminders during development |
 | **Stratus object storage** | Verified bucket config, object paths, and presigned URL behaviour for service logo uploads |

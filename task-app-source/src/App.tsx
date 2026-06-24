@@ -78,6 +78,8 @@ export default function App() {
           onUpdateTask={(id, data) => tm.updateTask({ task_id: id, ...data })}
           onActivateTask={(id, data) => tm.activateTask({ task_id: id, ...data })}
           onMoveToPipeline={(id, reason) => tm.moveToPipeline({ task_id: id, reason })}
+          onDropTask={(id, reason) => tm.dropTask({ task_id: id, dropped_reason: reason })}
+          onPipelineReview={(id, reason) => tm.pipelineReview({ task_id: id, reason })}
         />
       ) : showWorkspace ? (
         <WorkspacePage

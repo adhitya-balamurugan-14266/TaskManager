@@ -3,6 +3,7 @@ import type { AppState, Service } from '@/types';
 import { TaskCard } from '@/components/TaskCard';
 import { CompletedTaskCard } from '@/components/CompletedTaskCard';
 import { PipelineTaskCard } from '@/components/PipelineTaskCard';
+import { DroppedTaskCard } from '@/components/DroppedTaskCard';
 import { Button } from '@/components/Button';
 import { Input, Textarea } from '@/components/Input';
 import { Modal } from '@/components/Modal';
@@ -19,10 +20,12 @@ interface ServiceDetailPageProps {
   onUpdateTask: (id: string, data: { title?: string; description?: string; days_assigned?: number; due_date?: string; reminder?: boolean; reminder_time?: string; reminder_email?: string; pipeline_reason?: string; final_thoughts?: string }) => void;
   onActivateTask: (id: string, data: { days_assigned: number; due_date?: string; reminder: boolean; reminder_email?: string }) => void;
   onMoveToPipeline: (id: string, reason: string) => void;
+  onDropTask: (id: string, reason: string) => void;
+  onPipelineReview: (id: string, reason: string) => void;
   userEmail: string;
 }
 
-type Tab = 'active' | 'completed' | 'overdue' | 'pipeline';
+type Tab = 'active' | 'completed' | 'overdue' | 'pipeline' | 'dropped';
 
 export function ServiceDetailPage({
   service,
@@ -34,6 +37,8 @@ export function ServiceDetailPage({
   onUpdateTask,
   onActivateTask,
   onMoveToPipeline,
+  onDropTask,
+  onPipelineReview,
   userEmail,
 }: ServiceDetailPageProps) {
   function datetimeLocalFromDays(days: number): string {
@@ -82,6 +87,7 @@ export function ServiceDetailPage({
       return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
     });
   const pipelineTasks = (state.tasks.pipeline ?? []).filter((t) => t.service_id === service.id);
+  const droppedTasks = (state.tasks.dropped ?? []).filter((t) => t.service_id === service.id);
 
   // Completed tasks for this service, sorted months descending
   const completedMonths = Object.entries(state.tasks.completed)
@@ -98,6 +104,7 @@ export function ServiceDetailPage({
     return task?.title.toLowerCase().includes(q) || (task?.description ?? '').toLowerCase().includes(q);
   }) : overdueTasks;
   const filteredPipeline = q ? pipelineTasks.filter((t) => t.title.toLowerCase().includes(q) || (t.description ?? '').toLowerCase().includes(q)) : pipelineTasks;
+  const filteredDropped = q ? droppedTasks.filter((t) => t.title.toLowerCase().includes(q) || (t.description ?? '').toLowerCase().includes(q)) : droppedTasks;
   const filteredCompletedMonths = q
     ? completedMonths.map((m) => ({ ...m, tasks: m.tasks.filter((t) => t.title.toLowerCase().includes(q) || (t.description ?? '').toLowerCase().includes(q)) })).filter((m) => m.tasks.length > 0)
     : completedMonths;
@@ -150,6 +157,7 @@ export function ServiceDetailPage({
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">{service.name}</h1>
           <p className="text-xs text-gray-500 dark:text-gray-400">
             {activeTasks.length} active · {pipelineTasks.length} pipeline · {Object.values(state.tasks.completed).flat().filter((t) => t.service_id === service.id).length} completed
+            {droppedTasks.length > 0 && <span className="text-gray-400 ml-2">· {droppedTasks.length} dropped</span>}
             {overdueTasks.length > 0 && <span className="text-red-500 ml-2">· {overdueTasks.length} overdue</span>}
           </p>
         </div>
@@ -175,7 +183,7 @@ export function ServiceDetailPage({
 
       {/* Tabs */}
       <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-xl p-1">
-        {(['pipeline', 'active', 'completed', 'overdue'] as Tab[]).map((t) => (
+        {(['pipeline', 'active', 'completed', 'overdue', 'dropped'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -187,6 +195,9 @@ export function ServiceDetailPage({
             )}
             {t === 'pipeline' && pipelineTasks.length > 0 && (
               <span className="ml-1.5 bg-violet-500 text-white text-xs rounded-full px-1.5 py-0.5">{pipelineTasks.length}</span>
+            )}
+            {t === 'dropped' && droppedTasks.length > 0 && (
+              <span className="ml-1.5 bg-gray-400 text-white text-xs rounded-full px-1.5 py-0.5">{droppedTasks.length}</span>
             )}
           </button>
         ))}
@@ -209,6 +220,8 @@ export function ServiceDetailPage({
                 onDelete={onDeleteTask}
                 onActivate={(id, data) => onActivateTask(id, data)}
                 onUpdate={(id, data) => onUpdateTask(id, data)}
+                onDrop={(id, reason) => onDropTask(id, reason)}
+                onPipelineReview={(id, reason) => onPipelineReview(id, reason)}
               />
             ))
           )}
@@ -309,6 +322,27 @@ export function ServiceDetailPage({
                 />
               );
             })
+          )}
+        </div>
+      )}
+
+      {/* Dropped tasks */}
+      {tab === 'dropped' && (
+        <div className="space-y-3">
+          {filteredDropped.length === 0 ? (
+            <div className="text-center py-12 text-gray-400">
+              <p>{q ? 'No dropped tasks match your search.' : 'No dropped tasks. Tasks moved to dropped will appear here.'}</p>
+            </div>
+          ) : (
+            filteredDropped.map((task) => (
+              <DroppedTaskCard
+                key={task.id}
+                task={task}
+                serviceName={serviceMap[task.service_id] ?? '—'}
+                onDelete={onDeleteTask}
+                onMoveToPipeline={onMoveToPipeline}
+              />
+            ))
           )}
         </div>
       )}
