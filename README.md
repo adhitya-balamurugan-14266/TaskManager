@@ -265,22 +265,20 @@ catalyst deploy --only functions:task_api
 
 ## Built with Catalyst MCP
 
-This project was developed end-to-end using the **[Catalyst MCP (Model Context Protocol) Server](https://github.com/zoho/catalyst-mcp)** — a tool that exposes Catalyst platform capabilities as structured tools an AI agent can invoke directly from the editor, without switching to the Catalyst Console or writing boilerplate setup code.
+This project was built on the **[Catalyst by Zoho](https://catalyst.zoho.com)** platform — using Catalyst Slate for frontend hosting, Advanced I/O Functions for the REST API, Datastore for structured data, Stratus for object storage, Job Scheduling for reminders, and Mail for notifications.
 
-### What the MCP Server enabled
+Throughout development, the **[Catalyst MCP (Model Context Protocol) Server](https://github.com/zoho/catalyst-mcp)** made console operations significantly easier. Rather than switching to the Catalyst Console for every platform task, the MCP server exposed Catalyst capabilities as structured tools that could be invoked directly from the editor — making it faster to manage schema changes, inspect live data, and configure resources without breaking the development flow.
+
+### What the MCP Server helped with
 
 | Capability | How it was used |
 |---|---|
-| **DataStore operations** | Created and modified `Services` and `Tasks` tables; added columns (`is_pipeline`, `pipeline_reason`, `final_thoughts`, `is_priority`, `pipeline_entered_at`, `pipeline_alerted`, `dropped_reason`, `dropped_date`); updated column constraints (nullable `due_date`, `days_assigned`) |
-| **Function management** | Inspected function configs, environment variables, and deployment status for `task_api` and `task_reminder` |
+| **DataStore operations** | Created and modified `Services` and `Tasks` tables; added columns (`is_pipeline`, `pipeline_reason`, `final_thoughts`, `is_priority`, `pipeline_entered_at`, `pipeline_alerted`, `dropped_reason`, `dropped_date`, `image_references`); updated column constraints (nullable `due_date`, `days_assigned`) |
+| **Function management** | Inspected function configs, environment variables, and deployment status for `task_api`, `task_reminder`, and `pipeline_review_job` |
 | **Cron / Job Scheduling** | Created, verified, and managed one-time cron jobs for task reminders during development |
-| **Stratus object storage** | Verified bucket config, object paths, and presigned URL behaviour for service logo uploads |
+| **Stratus object storage** | Verified bucket config, object paths, and presigned URL behaviour for service logo and task image uploads |
 | **Query execution** | Ran ZCQL queries directly to inspect live data and validate schema changes |
 | **Project introspection** | Explored project config, resource IDs, and service metadata without leaving the editor |
-
-### Why it mattered
-
-Rather than context-switching between editor, Catalyst Console, and documentation, the MCP server let the AI agent query live platform state, apply schema changes, and validate behaviour — all within a single conversation. This meant features like Pipeline, Priority, and Final Thoughts (each requiring new DataStore columns and backend logic) could be designed, implemented, and verified in one continuous flow.
 
 ---
 
