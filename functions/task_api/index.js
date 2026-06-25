@@ -29,6 +29,7 @@ const JOBPOOL_NAME   = 'TaskReminderPool';       // Catalyst Job Pool for remind
 const REMINDER_FUNCTION_NAME = 'task_reminder'; // Job Function triggered by crons
 const STRATUS_BUCKET = 'taskmanager-175003';     // Catalyst Stratus bucket for service logos
 const LOGO_PATH_PREFIX = 'service-logos/';      // Object key prefix inside the bucket
+const TASK_IMAGES_PATH_PREFIX = 'task-images/'; // Object key prefix for task reference images
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
@@ -214,6 +215,30 @@ async function deleteReminderCron(catalystApp, cronId) {
   }
 }
 
+/**
+ * Deletes Stratus objects whose URLs appear in oldRefs but not in newRefs.
+ * Called when a task's image_references array is updated so orphaned objects
+ * are cleaned up automatically.
+ * @param {object} adminApp - Admin-scoped Catalyst app
+ * @param {string[]} oldRefs
+ * @param {string[]} newRefs
+ */
+async function deleteRemovedImages(adminApp, oldRefs, newRefs) {
+  if (!Array.isArray(oldRefs) || oldRefs.length === 0) return;
+  const safeNew = Array.isArray(newRefs) ? newRefs : [];
+  const removed = oldRefs.filter((url) => !safeNew.includes(url));
+  if (removed.length === 0) return;
+  const bucket = adminApp.stratus().bucket(STRATUS_BUCKET);
+  await Promise.all(removed.map(async (url) => {
+    try {
+      const keyMatch = String(url).match(/zohostratus\.in\/(.+)$/);
+      if (keyMatch) await bucket.deleteObject(keyMatch[1]);
+    } catch (e) {
+      console.warn('[task_api] Failed to delete removed image from Stratus:', e.message);
+    }
+  }));
+}
+
 // ─── Row Mappers ──────────────────────────────────────────────────────────────
 
 /**
@@ -258,6 +283,15 @@ function rowToTask(row) {
     is_priority: row.is_priority === true || row.is_priority === 'true',
     dropped_reason: row.dropped_reason || null,
     dropped_date: row.dropped_date || null,
+    image_references: (() => {
+      try {
+        if (!row.image_references) return [];
+        const parsed = typeof row.image_references === 'string'
+          ? JSON.parse(row.image_references)
+          : row.image_references;
+        return Array.isArray(parsed) ? parsed : [];
+      } catch { return []; }
+    })(),
   };
   if (row.status === 'completed') base.date_completed = row.date_completed;
   return base;
@@ -338,6 +372,20 @@ module.exports = async (req, res) => {
       return sendJson(res, 200, { presigned_url: signedRes.signature, object_url: objectUrl, key });
     }
 
+    // POST /tasks/image-upload — generate presigned PUT URL for a task reference image
+    if (pathParts[pathParts.length - 1] === 'image-upload' && pathParts[pathParts.length - 2] === 'tasks' && method === 'POST') {
+      const body = await getBody(req);
+      const { filename } = body;
+      if (!filename) return sendJson(res, 400, { error: 'filename is required.' });
+      const safe = String(filename).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100);
+      const key = `${TASK_IMAGES_PATH_PREFIX}${Date.now()}-${safe}`;
+      const adminApp = catalyst.initialize(req, { type: 'admin' });
+      const bucket = adminApp.stratus().bucket(STRATUS_BUCKET);
+      const signedRes = await bucket.generatePreSignedUrl(key, 'PUT', { expiryIn: 300 });
+      const objectUrl = `https://${STRATUS_BUCKET}-development.zohostratus.in/${key}`;
+      return sendJson(res, 200, { presigned_url: signedRes.signature, object_url: objectUrl, key });
+    }
+
     // POST /services — create_service
     if (action === 'services' && method === 'POST') {
       const body = await getBody(req);
@@ -404,7 +452,7 @@ module.exports = async (req, res) => {
     // POST /tasks — create_task
     if (action === 'tasks' && method === 'POST') {
       const body = await getBody(req);
-      const { title, service_id, days_assigned, due_date, reminder, description, reminder_time, reminder_email, is_pipeline } = body;
+      const { title, service_id, days_assigned, due_date, reminder, description, reminder_time, reminder_email, is_pipeline, image_references } = body;
       if (!title || !title.trim()) return sendJson(res, 400, { error: 'Task title is required.' });
       if (!service_id) return sendJson(res, 400, { error: 'service_id is required.' });
 
@@ -414,6 +462,9 @@ module.exports = async (req, res) => {
       if (svcRows.length === 0) return sendJson(res, 404, { error: `Service "${service_id}" not found.` });
 
       const date_added = new Date().toISOString();
+      const imageRefsJson = Array.isArray(image_references) && image_references.length > 0
+        ? JSON.stringify(image_references)
+        : null;
 
       if (is_pipeline) {
         await dsTasks.insertRow({
@@ -430,6 +481,7 @@ module.exports = async (req, res) => {
           cron_id: null,
           pipeline_entered_at: date_added,
           pipeline_alerted: false,
+          image_references: imageRefsJson,
         });
         const state = await buildState(zcql);
         return sendJson(res, 201, state);
@@ -455,6 +507,7 @@ module.exports = async (req, res) => {
         status: 'active',
         date_completed: null,
         cron_id: null,
+        image_references: imageRefsJson,
       });
       if (!!reminder && inserted && inserted.ROWID) {
         const cronId = await createReminderCron(catalystApp, inserted.ROWID, resolvedDueDate, reminder_email || '');
@@ -639,21 +692,33 @@ module.exports = async (req, res) => {
       const rawTask = taskRows[0][TASKS_TABLE];
       const existing = rowToTask(rawTask);
 
-      // Pipeline tasks: only title, description, pipeline_reason are editable
+      // Pipeline tasks: only title, description, pipeline_reason, image_references are editable
       if (existing.status === 'pipeline') {
         const updates = { ROWID: taskId };
         if (body.title !== undefined) updates.title = body.title.trim();
         if (body.description !== undefined) updates.description = body.description ? body.description.trim() : null;
         if (body.pipeline_reason !== undefined) updates.pipeline_reason = body.pipeline_reason ? body.pipeline_reason.trim() : null;
+        if (body.image_references !== undefined) {
+          const adminApp = catalyst.initialize(req, { type: 'admin' });
+          await deleteRemovedImages(adminApp, existing.image_references || [], body.image_references || []);
+          updates.image_references = Array.isArray(body.image_references) && body.image_references.length > 0
+            ? JSON.stringify(body.image_references) : null;
+        }
         await dsTasks.updateRow(updates);
         const state = await buildState(zcql);
         return sendJson(res, 200, state);
       }
 
-      // Completed tasks: only final_thoughts is editable
+      // Completed tasks: only final_thoughts and image_references are editable
       if (existing.status === 'completed') {
         const updates = { ROWID: taskId };
         if (body.final_thoughts !== undefined) updates.final_thoughts = body.final_thoughts ? body.final_thoughts.trim() : null;
+        if (body.image_references !== undefined) {
+          const adminApp = catalyst.initialize(req, { type: 'admin' });
+          await deleteRemovedImages(adminApp, existing.image_references || [], body.image_references || []);
+          updates.image_references = Array.isArray(body.image_references) && body.image_references.length > 0
+            ? JSON.stringify(body.image_references) : null;
+        }
         await dsTasks.updateRow(updates);
         const state = await buildState(zcql);
         return sendJson(res, 200, state);
@@ -667,6 +732,12 @@ module.exports = async (req, res) => {
       if (body.reminder !== undefined) updates.reminder = !!body.reminder;
       if (body.reminder_email !== undefined) updates.reminder_email = body.reminder_email ? body.reminder_email.trim() : null;
       if (body.is_priority !== undefined) updates.is_priority = !!body.is_priority;
+      if (body.image_references !== undefined) {
+        const adminApp = catalyst.initialize(req, { type: 'admin' });
+        await deleteRemovedImages(adminApp, existing.image_references || [], body.image_references || []);
+        updates.image_references = Array.isArray(body.image_references) && body.image_references.length > 0
+          ? JSON.stringify(body.image_references) : null;
+      }
       if (body.days_assigned !== undefined || body.due_date !== undefined || body.reminder_time !== undefined) {
         // If due_date is already a full ISO string (sent from browser with correct tz), use it directly
         const nextDueDate = (body.due_date && body.due_date.includes('T'))

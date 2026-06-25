@@ -4,15 +4,17 @@ import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import { Modal } from '@/components/Modal';
 import { Textarea } from '@/components/Input';
+import { ImageReferences } from '@/components/ImageReferences';
+import { ImageLightbox } from '@/components/ImageLightbox';
 import { formatDate } from '@/lib/utils';
-import { Trash2, Layers, Edit2 } from 'lucide-react';
+import { Trash2, Layers, Edit2, Image as ImageIcon } from 'lucide-react';
 
 interface CompletedTaskCardProps {
   task: CompletedTask;
   serviceName: string;
   onDelete: (id: string) => void;
   onMoveToPipeline: (id: string, reason: string) => void;
-  onUpdate: (id: string, data: { final_thoughts?: string }) => void;
+  onUpdate: (id: string, data: { final_thoughts?: string; image_references?: string[] }) => void;
 }
 
 export function CompletedTaskCard({ task, serviceName, onDelete, onMoveToPipeline, onUpdate }: CompletedTaskCardProps) {
@@ -20,6 +22,8 @@ export function CompletedTaskCard({ task, serviceName, onDelete, onMoveToPipelin
   const [pipelineReason, setPipelineReason] = useState('');
   const [editOpen, setEditOpen] = useState(false);
   const [editThoughts, setEditThoughts] = useState(task.final_thoughts ?? '');
+  const [editImages, setEditImages] = useState<string[]>(task.image_references ?? []);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   function handleMoveToPipeline() {
     onMoveToPipeline(task.id, pipelineReason.trim());
@@ -28,7 +32,7 @@ export function CompletedTaskCard({ task, serviceName, onDelete, onMoveToPipelin
   }
 
   function handleEditThoughts() {
-    onUpdate(task.id, { final_thoughts: editThoughts.trim() || undefined });
+    onUpdate(task.id, { final_thoughts: editThoughts.trim() || undefined, image_references: editImages });
     setEditOpen(false);
   }
 
@@ -48,6 +52,15 @@ export function CompletedTaskCard({ task, serviceName, onDelete, onMoveToPipelin
           <span>Service: <span className="font-medium text-gray-600 dark:text-gray-300">{serviceName}</span></span>
           <span>Added: {formatDate(task.date_added)}</span>
           <span>Completed: <span className="text-green-600 dark:text-green-400 font-medium">{formatDate(task.date_completed)}</span></span>
+          {task.image_references && task.image_references.length > 0 && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setLightboxOpen(true); }}
+              className="flex items-center gap-0.5 text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors hover:underline underline-offset-2"
+            >
+              <ImageIcon className="size-3" /> {task.image_references.length} image{task.image_references.length !== 1 ? 's' : ''}
+            </button>
+          )}
         </div>
         {task.final_thoughts && (
           <div className="rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 px-3 py-2">
@@ -60,7 +73,7 @@ export function CompletedTaskCard({ task, serviceName, onDelete, onMoveToPipelin
           <Button size="sm" variant="destructive" onClick={() => onDelete(task.id)}>
             <Trash2 className="size-3.5" /> Delete
           </Button>
-          <Button size="sm" variant="secondary" onClick={() => { setEditThoughts(task.final_thoughts ?? ''); setEditOpen(true); }} className="gap-1">
+          <Button size="sm" variant="secondary" onClick={() => { setEditThoughts(task.final_thoughts ?? ''); setEditImages(task.image_references ?? []); setEditOpen(true); }} className="gap-1">
             <Edit2 className="size-3.5" /> {task.final_thoughts ? 'Edit thoughts' : 'Add thoughts'}
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setPipelineOpen(true)} className="gap-1 text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950">
@@ -68,6 +81,12 @@ export function CompletedTaskCard({ task, serviceName, onDelete, onMoveToPipelin
           </Button>
         </div>
       </div>
+
+      <ImageLightbox
+        images={task.image_references ?? []}
+        open={lightboxOpen}
+        onClose={() => setLightboxOpen(false)}
+      />
 
       {/* Edit final thoughts modal */}
       <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Final Thoughts">
@@ -80,6 +99,10 @@ export function CompletedTaskCard({ task, serviceName, onDelete, onMoveToPipelin
             placeholder="Any notes, outcomes, or reflections on this task..."
             value={editThoughts}
             onChange={(e) => setEditThoughts(e.target.value)}
+          />
+          <ImageReferences
+            images={editImages}
+            onImagesChange={setEditImages}
           />
           <div className="flex gap-2 justify-end">
             <Button variant="secondary" onClick={() => setEditOpen(false)}>Cancel</Button>

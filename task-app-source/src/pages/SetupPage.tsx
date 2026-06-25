@@ -42,6 +42,7 @@ export function SetupPage({ onSave }: SetupPageProps) {
             placeholder="you@example.com"
             value={email}
             onChange={(e) => { setEmail(e.target.value); setError(''); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
             autoFocus
           />
           {error && <p className="text-sm text-red-500">{error}</p>}

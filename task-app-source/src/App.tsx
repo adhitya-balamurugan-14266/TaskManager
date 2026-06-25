@@ -20,6 +20,7 @@ function ErrorToast({ message, onDismiss }: { message: string; onDismiss: () => 
 export default function App() {
   const tm = useTaskManager();
   const [selectedService, setSelectedService] = useState<Service | null>(null);
+  const [initialServiceTab, setInitialServiceTab] = useState<string>('active');
   const [showWorkspace, setShowWorkspace] = useState(false);
   const [userEmail, setUserEmail] = useState<string>(() => localStorage.getItem('task_manager_email') || '');
   const [isDark, setIsDark] = useState<boolean>(() => {
@@ -68,10 +69,12 @@ export default function App() {
       )}
       {currentService ? (
         <ServiceDetailPage
+          key={currentService.id}
           service={currentService}
           state={tm.state}
           userEmail={userEmail}
-          onBack={() => setSelectedService(null)}
+          initialTab={initialServiceTab as any}
+          onBack={() => { setSelectedService(null); setInitialServiceTab('active'); }}
           onCreateTask={(data) => tm.createTask({ ...data, service_id: currentService.id })}
           onCompleteTask={(id, finalThoughts) => tm.completeTask({ task_id: id, final_thoughts: finalThoughts })}
           onDeleteTask={(id) => tm.deleteTask({ task_id: id })}
@@ -85,9 +88,10 @@ export default function App() {
         <WorkspacePage
           state={tm.state}
           onBack={() => setShowWorkspace(false)}
-          onSelectService={(s) => {
+          onSelectService={(s, tab) => {
             setShowWorkspace(false);
             setSelectedService(s);
+            setInitialServiceTab(tab ?? 'active');
           }}
         />
       ) : (

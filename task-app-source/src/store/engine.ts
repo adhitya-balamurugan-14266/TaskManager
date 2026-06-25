@@ -86,6 +86,27 @@ export async function getLogoUploadUrl(filename: string): Promise<{ presigned_ur
   }
 }
 
+/**
+ * Requests a short-lived presigned PUT URL from Stratus so the browser can
+ * upload a task reference image directly without routing through the function.
+ * Returns the presigned URL (for the PUT), the final public object URL (to
+ * store in image_references), and the Stratus object key.
+ */
+export async function getTaskImageUploadUrl(filename: string): Promise<{ presigned_url: string; object_url: string; key: string } | { error: string }> {
+  try {
+    const res = await fetch(`${BASE_URL}/tasks/image-upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error ?? `HTTP ${res.status}` };
+    return data as { presigned_url: string; object_url: string; key: string };
+  } catch (err: unknown) {
+    return { error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
 export async function createService(_state: AppState, payload: CreateServicePayload) {
   return apiFetch('/services', { method: 'POST', body: JSON.stringify(payload) });
 }

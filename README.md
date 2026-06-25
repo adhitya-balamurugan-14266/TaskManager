@@ -56,10 +56,20 @@ A full-stack task management application built on **Zoho Catalyst** — manage s
 ### Overdue Tracking
 - Tasks past their due date are automatically surfaced in an **Overdue** tab per service and in the global Workspace dashboard.
 
+### Image References
+- Attach reference images to any task (active, pipeline, or completed) via the create/edit modals.
+- Images are uploaded to Catalyst Stratus and the URLs are stored in the `image_references` column.
+- Upload multiple images at once; a thumbnail grid is shown in the modal with hover-to-delete (✕ button).
+- Image count badge (e.g. **"1 image"**) is clickable and opens a full-screen **Lightbox** viewer.
+- The lightbox supports keyboard navigation: **Escape** to close, **← →** arrows to cycle through images, and a thumbnail strip for multi-image tasks.
+- Images displayed in the Workspace task detail panel are also clickable thumbnails that open the lightbox.
+- Removing an image from the edit form automatically deletes the object from Stratus on save.
+
 ### My Workspace (Kanban Dashboard)
 - Five-column Kanban board: **Dropped**, **Pipeline**, **Active**, **Completed**, **Overdue** — all tasks across all services in one view.
 - Search bar in the header filters all five columns live as you type.
-- Click any card for full task details in a side sheet, including drop reason for dropped tasks.
+- Click any card for full task details in a side sheet, including image thumbnails and drop reason for dropped tasks.
+- **Go to service** button in the task detail panel navigates directly to the matching tab in that service's view (e.g. a completed task opens the **Completed** tab).
 - Jump to any service directly via the ⋯ meatball menu.
 
 ### Search
@@ -75,9 +85,10 @@ A full-stack task management application built on **Zoho Catalyst** — manage s
 - Stored in Catalyst Stratus object storage and displayed on service and task cards.
 - Logos are auto-deleted from Stratus when the service is deleted.
 
----
+### Setup & Onboarding
+- First-run email setup screen supports both **click** and **Enter key** to proceed.
 
-## Tech Stack
+---
 
 | Layer | Technology |
 |---|---|
@@ -122,6 +133,8 @@ TaskManager/
 │   │   │   ├── CompletedTaskCard.tsx  # Completed card (final thoughts, pipeline)
 │   │   │   ├── PipelineTaskCard.tsx   # Pipeline card (review modal, 2-week badge)
 │   │   │   ├── DroppedTaskCard.tsx    # Dropped task card (restore, delete)
+│   │   │   ├── ImageReferences.tsx    # Upload/manage task reference images
+│   │   │   ├── ImageLightbox.tsx      # Full-screen image viewer with keyboard nav
 │   │   │   ├── Badge.tsx              # Status badges incl. priority + dropped
 │   │   │   ├── Button.tsx
 │   │   │   ├── Modal.tsx
@@ -144,6 +157,7 @@ TaskManager/
 | `POST` | `/execute/services` | Create a service (name, optional logo_url) |
 | `DELETE` | `/execute/services/:id` | Delete a service and all its tasks + Stratus logo |
 | `POST` | `/execute/services/logo-upload` | Get a presigned Stratus PUT URL for logo upload |
+| `POST` | `/execute/tasks/image-upload` | Get a presigned Stratus PUT URL for task image upload |
 | `POST` | `/execute/tasks` | Create a task (active or pipeline) |
 | `PUT` | `/execute/tasks/:id` | Update a task |
 | `PUT` | `/execute/tasks/:id/complete` | Mark a task completed (with optional final thoughts) |
@@ -187,6 +201,7 @@ TaskManager/
 | `pipeline_alerted` | boolean | True after a 2-week pipeline alert email has been sent |
 | `dropped_reason` | varchar | Reason provided when dropping a pipeline task |
 | `dropped_date` | varchar | ISO timestamp when the task was dropped |
+| `image_references` | text | JSON array of Stratus image URLs (optional) |
 
 ---
 
@@ -194,8 +209,10 @@ TaskManager/
 
 - **Bucket:** `taskmanager-175003` (public read)
 - **Logo path:** `service-logos/<timestamp>-<filename>`
+- **Task image path:** `task-images/<timestamp>-<filename>`
 - Upload flow: frontend requests a presigned PUT URL from `task_api` → browser PUTs the file directly to Stratus → the returned object URL is saved in Datastore.
 - Logos are auto-deleted from Stratus when the service is deleted.
+- Task images are auto-deleted from Stratus when removed from the edit form or when the task is deleted.
 
 ---
 

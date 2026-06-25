@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import type { AppState, Service, ActiveTask, CompletedTask, PipelineTask, DroppedTask } from '@/types';
 import { Modal } from '@/components/Modal';
 import { Badge } from '@/components/Badge';
+import { ImageLightbox } from '@/components/ImageLightbox';
 import { formatDateTime } from '@/lib/utils';
 import {
   ArrowLeft,
@@ -14,12 +15,13 @@ import {
   Layers,
   Search,
   XCircle,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 interface WorkspacePageProps {
   state: AppState;
   onBack: () => void;
-  onSelectService: (service: Service) => void;
+  onSelectService: (service: Service, tab?: string) => void;
 }
 
 type SelectedTask =
@@ -138,6 +140,8 @@ function TaskDetailContent({
   onViewService: () => void;
 }) {
   const { task, service } = selected;
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const images = task.image_references ?? [];
 
   return (
     <div className="space-y-4">
@@ -248,6 +252,27 @@ function TaskDetailContent({
         </div>
       )}
 
+      {/* Image References */}
+      {images.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">
+            <ImageIcon className="size-3.5" /> Image References ({images.length})
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {images.map((url, i) => (
+              <button
+                key={url}
+                type="button"
+                onClick={() => setLightboxOpen(true)}
+                className="aspect-square rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 hover:ring-2 hover:ring-blue-400 transition-all"
+              >
+                <img src={url} alt={`Reference ${i + 1}`} className="w-full h-full object-cover" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Go to service */}
       <button
         onClick={onViewService}
@@ -256,6 +281,12 @@ function TaskDetailContent({
         Go to {service.name}
         <ArrowRight className="size-4" />
       </button>
+
+      <ImageLightbox
+        images={images}
+        open={lightboxOpen}
+        onClose={() => setLightboxOpen(false)}
+      />
     </div>
   );
 }
@@ -577,8 +608,9 @@ export function WorkspacePage({ state, onBack, onSelectService }: WorkspacePageP
             selected={selected}
             onViewService={() => {
               const svc = selected.service;
+              const tab = selected.kind;
               setSelected(null);
-              onSelectService(svc);
+              onSelectService(svc, tab);
             }}
           />
         </Modal>

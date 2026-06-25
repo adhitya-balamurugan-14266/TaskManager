@@ -4,8 +4,10 @@ import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import { Modal } from '@/components/Modal';
 import { Input, Textarea } from '@/components/Input';
+import { ImageReferences } from '@/components/ImageReferences';
+import { ImageLightbox } from '@/components/ImageLightbox';
 import { formatDate } from '@/lib/utils';
-import { Trash2, ArrowRight, Edit2, AlertTriangle, ClipboardCheck } from 'lucide-react';
+import { Trash2, ArrowRight, Edit2, AlertTriangle, ClipboardCheck, Image as ImageIcon } from 'lucide-react';
 
 interface PipelineTaskCardProps {
   task: PipelineTask;
@@ -13,7 +15,7 @@ interface PipelineTaskCardProps {
   userEmail: string;
   onDelete: (id: string) => void;
   onActivate: (id: string, data: { days_assigned: number; due_date?: string; reminder: boolean; reminder_email?: string }) => void;
-  onUpdate: (id: string, data: { title?: string; description?: string; pipeline_reason?: string }) => void;
+  onUpdate: (id: string, data: { title?: string; description?: string; pipeline_reason?: string; image_references?: string[] }) => void;
   onDrop: (id: string, reason: string) => void;
   onPipelineReview: (id: string, reason: string) => void;
 }
@@ -33,11 +35,13 @@ export function PipelineTaskCard({ task, serviceName, userEmail, onDelete, onAct
   const [reviewMode, setReviewMode] = useState<'choose' | 'drop' | 'keep'>('choose');
   const [dropReason, setDropReason] = useState('');
   const [keepReason, setKeepReason] = useState('');
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   const [editForm, setEditForm] = useState({
     title: task.title,
     description: task.description ?? '',
     pipeline_reason: task.pipeline_reason ?? '',
+    image_references: task.image_references ?? [] as string[],
   });
 
   const overdue = isPipelineOverdue(task);
@@ -47,6 +51,7 @@ export function PipelineTaskCard({ task, serviceName, userEmail, onDelete, onAct
       title: editForm.title,
       description: editForm.description,
       pipeline_reason: editForm.pipeline_reason,
+      image_references: editForm.image_references,
     });
     setEditOpen(false);
   }
@@ -133,6 +138,15 @@ export function PipelineTaskCard({ task, serviceName, userEmail, onDelete, onAct
           {task.pipeline_entered_at && task.pipeline_entered_at !== task.date_added && (
             <span>In pipeline since: <span className="font-medium">{formatDate(task.pipeline_entered_at)}</span></span>
           )}
+          {task.image_references && task.image_references.length > 0 && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setLightboxOpen(true); }}
+              className="flex items-center gap-0.5 text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors hover:underline underline-offset-2"
+            >
+              <ImageIcon className="size-3" /> {task.image_references.length} image{task.image_references.length !== 1 ? 's' : ''}
+            </button>
+          )}
         </div>
 
         {task.pipeline_reason && (
@@ -147,7 +161,7 @@ export function PipelineTaskCard({ task, serviceName, userEmail, onDelete, onAct
           <Button size="sm" variant="primary" onClick={() => setActivateOpen(true)} className="gap-1">
             <ArrowRight className="size-3.5" /> Move to Active
           </Button>
-          <Button size="sm" variant="secondary" onClick={() => { setEditForm({ title: task.title, description: task.description ?? '', pipeline_reason: task.pipeline_reason ?? '' }); setEditOpen(true); }}>
+          <Button size="sm" variant="secondary" onClick={() => { setEditForm({ title: task.title, description: task.description ?? '', pipeline_reason: task.pipeline_reason ?? '', image_references: task.image_references ?? [] }); setEditOpen(true); }}>
             <Edit2 className="size-3.5" />
           </Button>
           <Button size="sm" variant="secondary" onClick={openReview} className="gap-1">
@@ -264,6 +278,10 @@ export function PipelineTaskCard({ task, serviceName, userEmail, onDelete, onAct
             value={editForm.pipeline_reason}
             onChange={(e) => setEditForm((f) => ({ ...f, pipeline_reason: e.target.value }))}
           />
+          <ImageReferences
+            images={editForm.image_references}
+            onImagesChange={(imgs) => setEditForm((f) => ({ ...f, image_references: imgs }))}
+          />
           <div className="flex gap-2 justify-end pt-2">
             <Button variant="secondary" onClick={() => setEditOpen(false)}>Cancel</Button>
             <Button onClick={handleEdit} disabled={!editForm.title.trim()}>Save</Button>
@@ -349,6 +367,12 @@ export function PipelineTaskCard({ task, serviceName, userEmail, onDelete, onAct
           <Button variant="destructive" onClick={() => { onDelete(task.id); setConfirmDelete(false); }}>Delete</Button>
         </div>
       </Modal>
+
+      <ImageLightbox
+        images={task.image_references ?? []}
+        open={lightboxOpen}
+        onClose={() => setLightboxOpen(false)}
+      />
     </>
   );
 }

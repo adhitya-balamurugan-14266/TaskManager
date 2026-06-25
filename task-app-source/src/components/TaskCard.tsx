@@ -4,15 +4,17 @@ import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import { Modal } from '@/components/Modal';
 import { Input, Textarea } from '@/components/Input';
+import { ImageReferences } from '@/components/ImageReferences';
+import { ImageLightbox } from '@/components/ImageLightbox';
 import { formatDate, formatDateTime, extractDate, extractTime, isOverdue } from '@/lib/utils';
-import { CheckCircle, Trash2, Edit2, Bell, BellOff, Layers, Flame } from 'lucide-react';
+import { CheckCircle, Trash2, Edit2, Bell, BellOff, Layers, Flame, Image as ImageIcon } from 'lucide-react';
 
 interface TaskCardProps {
   task: ActiveTask;
   serviceName: string;
   onComplete: (id: string, finalThoughts?: string) => void;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, data: { title?: string; description?: string; days_assigned?: number; due_date?: string; reminder?: boolean; reminder_time?: string; reminder_email?: string; is_priority?: boolean }) => void;
+  onUpdate: (id: string, data: { title?: string; description?: string; days_assigned?: number; due_date?: string; reminder?: boolean; reminder_time?: string; reminder_email?: string; is_priority?: boolean; image_references?: string[] }) => void;
   onMoveToPipeline: (id: string, reason: string) => void;
 }
 
@@ -23,11 +25,13 @@ export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, on
   const [pipelineReason, setPipelineReason] = useState('');
   const [completeOpen, setCompleteOpen] = useState(false);
   const [finalThoughts, setFinalThoughts] = useState('');
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const [form, setForm] = useState({
     title: task.title,
     description: task.description ?? '',
     days_assigned: String(task.days_assigned),
     due_datetime: `${extractDate(task.due_date)}T${extractTime(task.due_date)}`,
+    image_references: task.image_references ?? [] as string[],
   });
   const overdue = isOverdue(task.due_date);
 
@@ -47,6 +51,7 @@ export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, on
       description: form.description,
       days_assigned: Math.max(0, Number(form.days_assigned) || 0),
       due_date: dueIso,
+      image_references: form.image_references,
     });
     setEditOpen(false);
   }
@@ -93,6 +98,15 @@ export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, on
           <span className={overdue ? 'text-red-600 dark:text-red-400 font-medium' : ''}>
             Due: {formatDateTime(task.due_date)} ({task.days_assigned}d)
           </span>
+          {task.image_references && task.image_references.length > 0 && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setLightboxOpen(true); }}
+              className="flex items-center gap-0.5 text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors hover:underline underline-offset-2"
+            >
+              <ImageIcon className="size-3" /> {task.image_references.length} image{task.image_references.length !== 1 ? 's' : ''}
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-2 pt-1 border-t border-gray-100 dark:border-gray-800">
@@ -179,6 +193,10 @@ export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, on
               </button>
             </div>
           </div>
+          <ImageReferences
+            images={form.image_references}
+            onImagesChange={(imgs) => setForm((f) => ({ ...f, image_references: imgs }))}
+          />
           <div className="flex gap-2 justify-end pt-2">
             <Button variant="secondary" onClick={() => setEditOpen(false)}>Cancel</Button>
             <Button onClick={handleUpdate}>Save</Button>
@@ -218,6 +236,12 @@ export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, on
           </div>
         </div>
       </Modal>
+
+      <ImageLightbox
+        images={task.image_references ?? []}
+        open={lightboxOpen}
+        onClose={() => setLightboxOpen(false)}
+      />
     </>
   );
 }

@@ -27,6 +27,7 @@ export interface ActiveTask {
   reminder_email: string | null;
   status: 'active';
   is_priority: boolean;
+  image_references: string[] | null;
 }
 
 /** A task that has been marked complete. Moves to the monthly archive in AppState. */
@@ -42,6 +43,7 @@ export interface CompletedTask {
   status: 'completed';
   date_completed: string;
   final_thoughts: string | null;
+  image_references: string[] | null;
 }
 
 /** A task sitting in the backlog (no due date until activated). */
@@ -57,6 +59,7 @@ export interface PipelineTask {
   pipeline_entered_at: string | null;
   /** Whether the 2-week pipeline alert has been sent for the current review cycle. */
   pipeline_alerted: boolean;
+  image_references: string[] | null;
 }
 
 /** A task that was reviewed and intentionally dropped from the pipeline. */
@@ -69,6 +72,7 @@ export interface DroppedTask {
   status: 'dropped';
   dropped_reason: string;
   dropped_date: string;
+  image_references: string[] | null;
 }
 
 export type Task = ActiveTask | CompletedTask | PipelineTask | DroppedTask;
@@ -110,6 +114,7 @@ export interface CreateTaskPayload {
   reminder_time?: string;
   reminder_email?: string;
   is_pipeline?: boolean;
+  image_references?: string[];
 }
 export interface CompleteTaskPayload { task_id: string; final_thoughts?: string; }
 export interface DeleteTaskPayload { task_id: string; }
@@ -125,6 +130,7 @@ export interface UpdateTaskPayload {
   pipeline_reason?: string;  // pipeline tasks only
   final_thoughts?: string;   // completed tasks only
   is_priority?: boolean;     // active tasks only
+  image_references?: string[];
 }
 export interface ActivateTaskPayload {
   task_id: string;

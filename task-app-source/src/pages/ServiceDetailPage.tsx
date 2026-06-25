@@ -8,24 +8,26 @@ import { Button } from '@/components/Button';
 import { Input, Textarea } from '@/components/Input';
 import { Modal } from '@/components/Modal';
 import { Badge } from '@/components/Badge';
+import { ImageReferences } from '@/components/ImageReferences';
 import { Plus, ArrowLeft, Archive, Bell, Search } from 'lucide-react';
+
+type Tab = 'active' | 'completed' | 'overdue' | 'pipeline' | 'dropped';
 
 interface ServiceDetailPageProps {
   service: Service;
   state: AppState;
   onBack: () => void;
-  onCreateTask: (data: { title: string; days_assigned: number; due_date?: string; reminder: boolean; description?: string; reminder_time?: string; reminder_email?: string; is_pipeline?: boolean }) => void;
+  onCreateTask: (data: { title: string; days_assigned: number; due_date?: string; reminder: boolean; description?: string; reminder_time?: string; reminder_email?: string; is_pipeline?: boolean; image_references?: string[] }) => void;
   onCompleteTask: (id: string, finalThoughts?: string) => void;
   onDeleteTask: (id: string) => void;
-  onUpdateTask: (id: string, data: { title?: string; description?: string; days_assigned?: number; due_date?: string; reminder?: boolean; reminder_time?: string; reminder_email?: string; pipeline_reason?: string; final_thoughts?: string }) => void;
+  onUpdateTask: (id: string, data: { title?: string; description?: string; days_assigned?: number; due_date?: string; reminder?: boolean; reminder_time?: string; reminder_email?: string; pipeline_reason?: string; final_thoughts?: string; image_references?: string[] }) => void;
   onActivateTask: (id: string, data: { days_assigned: number; due_date?: string; reminder: boolean; reminder_email?: string }) => void;
   onMoveToPipeline: (id: string, reason: string) => void;
   onDropTask: (id: string, reason: string) => void;
   onPipelineReview: (id: string, reason: string) => void;
   userEmail: string;
+  initialTab?: Tab;
 }
-
-type Tab = 'active' | 'completed' | 'overdue' | 'pipeline' | 'dropped';
 
 export function ServiceDetailPage({
   service,
@@ -40,6 +42,7 @@ export function ServiceDetailPage({
   onDropTask,
   onPipelineReview,
   userEmail,
+  initialTab,
 }: ServiceDetailPageProps) {
   function datetimeLocalFromDays(days: number): string {
     const d = new Date();
@@ -58,7 +61,7 @@ export function ServiceDetailPage({
     return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
   }
 
-  const [tab, setTab] = useState<Tab>('active');
+  const [tab, setTab] = useState<Tab>(initialTab ?? 'active');
   const [search, setSearch] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [archiveMonth, setArchiveMonth] = useState('');
@@ -70,6 +73,7 @@ export function ServiceDetailPage({
     reminder: false,
     reminder_email: userEmail,
     is_pipeline: false,
+    image_references: [] as string[],
   });
 
   const activeTasks = state.tasks.active
@@ -118,6 +122,7 @@ export function ServiceDetailPage({
         days_assigned: 0,
         reminder: false,
         is_pipeline: true,
+        image_references: form.image_references.length > 0 ? form.image_references : undefined,
       });
     } else {
       const dueIso = form.due_datetime ? new Date(form.due_datetime).toISOString() : undefined;
@@ -128,6 +133,7 @@ export function ServiceDetailPage({
         due_date: dueIso,
         reminder: form.reminder,
         reminder_email: form.reminder ? form.reminder_email : '',
+        image_references: form.image_references.length > 0 ? form.image_references : undefined,
       });
     }
     setForm({
@@ -138,6 +144,7 @@ export function ServiceDetailPage({
       reminder: false,
       reminder_email: userEmail,
       is_pipeline: false,
+      image_references: [],
     });
     setCreateOpen(false);
   }
@@ -436,6 +443,10 @@ export function ServiceDetailPage({
               )}
             </>
           )}
+          <ImageReferences
+            images={form.image_references}
+            onImagesChange={(imgs) => setForm((f) => ({ ...f, image_references: imgs }))}
+          />
           <div className="flex gap-2 justify-end pt-2">
             <Button variant="secondary" onClick={() => setCreateOpen(false)}>Cancel</Button>
             <Button onClick={handleCreate} disabled={!form.title.trim()}>Create Task</Button>
