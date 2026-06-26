@@ -7,7 +7,7 @@ import { Input, Textarea } from '@/components/Input';
 import { ImageReferences } from '@/components/ImageReferences';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { formatDate, formatDateTime, extractDate, extractTime, isOverdue } from '@/lib/utils';
-import { CheckCircle, Trash2, Edit2, Bell, BellOff, Layers, Flame, Image as ImageIcon } from 'lucide-react';
+import { CheckCircle, Trash2, Edit2, Bell, BellOff, Layers, Flame, Image as ImageIcon, CalendarClock } from 'lucide-react';
 
 interface TaskCardProps {
   task: ActiveTask;
@@ -25,6 +25,8 @@ export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, on
   const [pipelineReason, setPipelineReason] = useState('');
   const [completeOpen, setCompleteOpen] = useState(false);
   const [finalThoughts, setFinalThoughts] = useState('');
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [newDueDatetime, setNewDueDatetime] = useState('');
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [form, setForm] = useState({
     title: task.title,
@@ -60,6 +62,17 @@ export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, on
     onMoveToPipeline(task.id, pipelineReason.trim());
     setPipelineOpen(false);
     setPipelineReason('');
+  }
+
+  function handleReschedule() {
+    if (!newDueDatetime) return;
+    const dueIso = new Date(newDueDatetime).toISOString();
+    onUpdate(task.id, {
+      due_date: dueIso,
+      days_assigned: daysFromDatetime(newDueDatetime),
+    });
+    setRescheduleOpen(false);
+    setNewDueDatetime('');
   }
 
   function handleComplete() {
@@ -122,6 +135,23 @@ export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, on
           <Button size="sm" variant="ghost" onClick={() => setPipelineOpen(true)} className="gap-1 text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950">
             <Layers className="size-3.5" /> Pipeline
           </Button>
+          {overdue && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                const d = new Date();
+                d.setDate(d.getDate() + 1);
+                d.setHours(23, 59, 0, 0);
+                const pad = (n: number) => String(n).padStart(2, '0');
+                setNewDueDatetime(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`);
+                setRescheduleOpen(true);
+              }}
+              className="gap-1 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950"
+            >
+              <CalendarClock className="size-3.5" /> Reschedule
+            </Button>
+          )}
           <Button size="sm" variant="ghost" onClick={() => onUpdate(task.id, { is_priority: !task.is_priority })} className={`gap-1 ${task.is_priority ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950' : 'text-gray-500 hover:text-red-600'}`}>
             <Flame className="size-3.5" /> {task.is_priority ? 'Deprioritize' : 'Prioritize'}
           </Button>
@@ -242,6 +272,34 @@ export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, on
         open={lightboxOpen}
         onClose={() => setLightboxOpen(false)}
       />
+
+      {/* Reschedule modal — shown only for overdue tasks */}
+      <Modal open={rescheduleOpen} onClose={() => setRescheduleOpen(false)} title="Reschedule Task">
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          Set a new due date for <strong className="text-gray-900 dark:text-gray-100">{task.title}</strong>. The task will return to active once a future date is saved.
+        </p>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">New due date &amp; time</label>
+            <input
+              type="datetime-local"
+              value={newDueDatetime}
+              onChange={(e) => setNewDueDatetime(e.target.value)}
+              className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+            />
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Button variant="secondary" onClick={() => setRescheduleOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleReschedule}
+              disabled={!newDueDatetime || new Date(newDueDatetime) <= new Date()}
+              className="gap-1 bg-amber-500 hover:bg-amber-600 text-white"
+            >
+              <CalendarClock className="size-3.5" /> Reschedule
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </>
   );
 }

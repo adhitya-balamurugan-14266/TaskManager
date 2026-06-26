@@ -55,6 +55,8 @@ A full-stack task management application built on **Zoho Catalyst** — manage s
 
 ### Overdue Tracking
 - Tasks past their due date are automatically surfaced in an **Overdue** tab per service and in the global Workspace dashboard.
+- Overdue task cards show a dedicated amber **"Reschedule"** button. Clicking it opens a focused modal pre-filled with a sensible next-day default. The confirm button is disabled until a future date is chosen — preventing accidental re-saves of a past date.
+- On save, the task's due date is updated (and any active reminder cron is rescheduled automatically). The task immediately leaves the overdue state and returns to the **Active** tab.
 
 ### Image References
 - Attach reference images to any task (active, pipeline, or completed) via the create/edit modals.
