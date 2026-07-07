@@ -75,6 +75,7 @@ export default function App() {
           userEmail={userEmail}
           initialTab={initialServiceTab as any}
           onBack={() => { setSelectedService(null); setInitialServiceTab('active'); }}
+          onOpenDashboard={() => { setSelectedService(null); setShowWorkspace(true); }}
           onCreateTask={(data) => tm.createTask({ ...data, service_id: currentService.id })}
           onCompleteTask={(id, finalThoughts) => tm.completeTask({ task_id: id, final_thoughts: finalThoughts })}
           onDeleteTask={(id) => tm.deleteTask({ task_id: id })}

@@ -9,7 +9,7 @@ import { Input, Textarea } from '@/components/Input';
 import { Modal } from '@/components/Modal';
 import { Badge } from '@/components/Badge';
 import { ImageReferences } from '@/components/ImageReferences';
-import { Plus, ArrowLeft, Archive, Bell, Search } from 'lucide-react';
+import { Plus, ArrowLeft, Archive, Bell, Search, LayoutDashboard } from 'lucide-react';
 
 type Tab = 'active' | 'completed' | 'overdue' | 'pipeline' | 'dropped';
 
@@ -17,6 +17,7 @@ interface ServiceDetailPageProps {
   service: Service;
   state: AppState;
   onBack: () => void;
+  onOpenDashboard: () => void;
   onCreateTask: (data: { title: string; days_assigned: number; due_date?: string; reminder: boolean; description?: string; reminder_time?: string; reminder_email?: string; is_pipeline?: boolean; image_references?: string[] }) => void;
   onCompleteTask: (id: string, finalThoughts?: string) => void;
   onDeleteTask: (id: string) => void;
@@ -33,6 +34,7 @@ export function ServiceDetailPage({
   service,
   state,
   onBack,
+  onOpenDashboard,
   onCreateTask,
   onCompleteTask,
   onDeleteTask,
@@ -168,9 +170,14 @@ export function ServiceDetailPage({
             {overdueTasks.length > 0 && <span className="text-red-500 ml-2">· {overdueTasks.length} overdue</span>}
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="size-4" /> New Task
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="size-4" /> New Task
+          </Button>
+          <Button variant="secondary" onClick={onOpenDashboard}>
+            <LayoutDashboard className="size-4" /> Dashboard
+          </Button>
+        </div>
       </div>
 
       {/* Search bar */}
