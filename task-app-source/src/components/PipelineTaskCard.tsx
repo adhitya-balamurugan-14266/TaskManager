@@ -7,7 +7,8 @@ import { Input, Textarea } from '@/components/Input';
 import { ImageReferences } from '@/components/ImageReferences';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { formatDate } from '@/lib/utils';
-import { Trash2, ArrowRight, Edit2, AlertTriangle, ClipboardCheck, Image as ImageIcon } from 'lucide-react';
+import { Trash2, ArrowRight, Edit2, AlertTriangle, ClipboardCheck, Image as ImageIcon, Info } from 'lucide-react';
+import { TaskInfoModal } from '@/components/TaskInfoModal';
 
 interface PipelineTaskCardProps {
   task: PipelineTask;
@@ -31,6 +32,7 @@ export function PipelineTaskCard({ task, serviceName, userEmail, onDelete, onAct
   const [activateOpen, setActivateOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewMode, setReviewMode] = useState<'choose' | 'drop' | 'keep'>('choose');
   const [dropReason, setDropReason] = useState('');
@@ -164,6 +166,11 @@ export function PipelineTaskCard({ task, serviceName, userEmail, onDelete, onAct
           <Button size="sm" variant="secondary" onClick={() => { setEditForm({ title: task.title, description: task.description ?? '', pipeline_reason: task.pipeline_reason ?? '', image_references: task.image_references ?? [] }); setEditOpen(true); }}>
             <Edit2 className="size-3.5" />
           </Button>
+          {task.description && (
+            <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); setInfoOpen(true); }}>
+              <Info className="size-3.5" />
+            </Button>
+          )}
           <Button size="sm" variant="secondary" onClick={openReview} className="gap-1">
             <ClipboardCheck className="size-3.5" /> Review
           </Button>
@@ -373,6 +380,15 @@ export function PipelineTaskCard({ task, serviceName, userEmail, onDelete, onAct
         open={lightboxOpen}
         onClose={() => setLightboxOpen(false)}
       />
+
+      {task.description && (
+        <TaskInfoModal
+          open={infoOpen}
+          onClose={() => setInfoOpen(false)}
+          title={task.title}
+          description={task.description}
+        />
+      )}
     </>
   );
 }

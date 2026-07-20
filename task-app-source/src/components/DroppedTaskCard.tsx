@@ -4,7 +4,8 @@ import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import { Modal } from '@/components/Modal';
 import { formatDate } from '@/lib/utils';
-import { Trash2, RotateCcw } from 'lucide-react';
+import { Trash2, RotateCcw, Info } from 'lucide-react';
+import { TaskInfoModal } from '@/components/TaskInfoModal';
 
 interface DroppedTaskCardProps {
   task: DroppedTask;
@@ -16,6 +17,7 @@ interface DroppedTaskCardProps {
 export function DroppedTaskCard({ task, serviceName, onDelete, onMoveToPipeline }: DroppedTaskCardProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [restoreOpen, setRestoreOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
 
   return (
     <>
@@ -45,11 +47,25 @@ export function DroppedTaskCard({ task, serviceName, onDelete, onMoveToPipeline 
           <Button size="sm" variant="secondary" onClick={() => setRestoreOpen(true)} className="gap-1">
             <RotateCcw className="size-3.5" /> Restore to Pipeline
           </Button>
+          {task.description && (
+            <Button size="sm" variant="secondary" onClick={() => setInfoOpen(true)}>
+              <Info className="size-3.5" />
+            </Button>
+          )}
           <Button size="sm" variant="destructive" onClick={() => setConfirmDelete(true)}>
             <Trash2 className="size-3.5" />
           </Button>
         </div>
       </div>
+
+      {task.description && (
+        <TaskInfoModal
+          open={infoOpen}
+          onClose={() => setInfoOpen(false)}
+          title={task.title}
+          description={task.description}
+        />
+      )}
 
       {/* Restore to pipeline modal */}
       <Modal open={restoreOpen} onClose={() => setRestoreOpen(false)} title="Restore to Pipeline">

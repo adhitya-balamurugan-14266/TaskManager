@@ -7,7 +7,8 @@ import { Input, Textarea } from '@/components/Input';
 import { ImageReferences } from '@/components/ImageReferences';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { formatDate, formatDateTime, extractDate, extractTime, isOverdue } from '@/lib/utils';
-import { CheckCircle, Trash2, Edit2, Bell, BellOff, Layers, Flame, Image as ImageIcon, CalendarClock } from 'lucide-react';
+import { CheckCircle, Trash2, Edit2, Bell, BellOff, Layers, Flame, Image as ImageIcon, CalendarClock, Info } from 'lucide-react';
+import { TaskInfoModal } from '@/components/TaskInfoModal';
 
 interface TaskCardProps {
   task: ActiveTask;
@@ -20,6 +21,7 @@ interface TaskCardProps {
 
 export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, onMoveToPipeline }: TaskCardProps) {
   const [editOpen, setEditOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [pipelineOpen, setPipelineOpen] = useState(false);
   const [pipelineReason, setPipelineReason] = useState('');
@@ -129,6 +131,11 @@ export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, on
           <Button size="sm" variant="secondary" onClick={() => setEditOpen(true)}>
             <Edit2 className="size-3.5" />
           </Button>
+          {task.description && (
+            <Button size="sm" variant="secondary" onClick={() => setInfoOpen(true)}>
+              <Info className="size-3.5" />
+            </Button>
+          )}
           <Button size="sm" variant="destructive" onClick={() => setConfirmDelete(true)}>
             <Trash2 className="size-3.5" />
           </Button>
@@ -272,6 +279,15 @@ export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, on
         open={lightboxOpen}
         onClose={() => setLightboxOpen(false)}
       />
+
+      {task.description && (
+        <TaskInfoModal
+          open={infoOpen}
+          onClose={() => setInfoOpen(false)}
+          title={task.title}
+          description={task.description}
+        />
+      )}
 
       {/* Reschedule modal — shown only for overdue tasks */}
       <Modal open={rescheduleOpen} onClose={() => setRescheduleOpen(false)} title="Reschedule Task">

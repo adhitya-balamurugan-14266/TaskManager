@@ -7,7 +7,8 @@ import { Textarea } from '@/components/Input';
 import { ImageReferences } from '@/components/ImageReferences';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { formatDate } from '@/lib/utils';
-import { Trash2, Layers, Edit2, Image as ImageIcon } from 'lucide-react';
+import { Trash2, Layers, Edit2, Image as ImageIcon, Info } from 'lucide-react';
+import { TaskInfoModal } from '@/components/TaskInfoModal';
 
 interface CompletedTaskCardProps {
   task: CompletedTask;
@@ -20,6 +21,7 @@ interface CompletedTaskCardProps {
 export function CompletedTaskCard({ task, serviceName, onDelete, onMoveToPipeline, onUpdate }: CompletedTaskCardProps) {
   const [pipelineOpen, setPipelineOpen] = useState(false);
   const [pipelineReason, setPipelineReason] = useState('');
+  const [infoOpen, setInfoOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editThoughts, setEditThoughts] = useState(task.final_thoughts ?? '');
   const [editImages, setEditImages] = useState<string[]>(task.image_references ?? []);
@@ -76,6 +78,11 @@ export function CompletedTaskCard({ task, serviceName, onDelete, onMoveToPipelin
           <Button size="sm" variant="secondary" onClick={() => { setEditThoughts(task.final_thoughts ?? ''); setEditImages(task.image_references ?? []); setEditOpen(true); }} className="gap-1">
             <Edit2 className="size-3.5" /> {task.final_thoughts ? 'Edit thoughts' : 'Add thoughts'}
           </Button>
+          {task.description && (
+            <Button size="sm" variant="secondary" onClick={() => setInfoOpen(true)}>
+              <Info className="size-3.5" />
+            </Button>
+          )}
           <Button size="sm" variant="ghost" onClick={() => setPipelineOpen(true)} className="gap-1 text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950">
             <Layers className="size-3.5" /> Pipeline
           </Button>
@@ -87,6 +94,15 @@ export function CompletedTaskCard({ task, serviceName, onDelete, onMoveToPipelin
         open={lightboxOpen}
         onClose={() => setLightboxOpen(false)}
       />
+
+      {task.description && (
+        <TaskInfoModal
+          open={infoOpen}
+          onClose={() => setInfoOpen(false)}
+          title={task.title}
+          description={task.description}
+        />
+      )}
 
       {/* Edit final thoughts modal */}
       <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Final Thoughts">
