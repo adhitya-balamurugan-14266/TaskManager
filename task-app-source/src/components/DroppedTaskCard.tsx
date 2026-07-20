@@ -3,7 +3,7 @@ import type { DroppedTask } from '@/types';
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import { Modal } from '@/components/Modal';
-import { formatDate } from '@/lib/utils';
+import { formatDate, stripHtml } from '@/lib/utils';
 import { Trash2, RotateCcw, Info } from 'lucide-react';
 import { TaskInfoModal } from '@/components/TaskInfoModal';
 
@@ -26,7 +26,7 @@ export function DroppedTaskCard({ task, serviceName, onDelete, onMoveToPipeline 
           <div className="flex-1 min-w-0">
             <h3 className="font-medium text-gray-700 dark:text-gray-300 truncate line-through">{task.title}</h3>
             {task.description && (
-              <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5 line-clamp-2">{task.description}</p>
+              <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5 line-clamp-2">{stripHtml(task.description)}</p>
             )}
           </div>
           <Badge variant="dropped">Dropped</Badge>

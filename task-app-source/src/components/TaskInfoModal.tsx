@@ -1,34 +1,16 @@
 import { ExternalLink } from 'lucide-react';
 import { Modal } from '@/components/Modal';
+import { RichTextViewer } from '@/components/RichTextViewer';
 
 const URL_RE = /(https?:\/\/[^\s<>"{}|\\^`[\]]+)/g;
 
-export function extractLinks(text: string): string[] {
-  return Array.from(text.matchAll(URL_RE), (m) => m[0]);
-}
-
-export function renderWithLinks(text: string): React.ReactNode[] {
-  const parts: React.ReactNode[] = [];
-  let last = 0;
-  URL_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = URL_RE.exec(text)) !== null) {
-    if (m.index > last) parts.push(text.slice(last, m.index));
-    parts.push(
-      <a
-        key={m.index}
-        href={m[0]}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-blue-600 dark:text-blue-400 underline underline-offset-2 break-all hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
-      >
-        {m[0]}
-      </a>
-    );
-    last = m.index + m[0].length;
-  }
-  if (last < text.length) parts.push(text.slice(last));
-  return parts;
+export function extractLinks(html: string): string[] {
+  // Extract href values from anchor tags first, then bare URLs from text
+  const hrefs = Array.from(html.matchAll(/href="(https?:\/\/[^"]+)"/g), (m) => m[1]);
+  const bare = Array.from(html.matchAll(URL_RE), (m) => m[0]).filter(
+    (url) => !hrefs.includes(url)
+  );
+  return Array.from(new Set([...hrefs, ...bare]));
 }
 
 interface TaskInfoModalProps {
@@ -36,9 +18,10 @@ interface TaskInfoModalProps {
   onClose: () => void;
   title: string;
   description: string;
+  onDescriptionChange?: (html: string) => void;
 }
 
-export function TaskInfoModal({ open, onClose, title, description }: TaskInfoModalProps) {
+export function TaskInfoModal({ open, onClose, title, description, onDescriptionChange }: TaskInfoModalProps) {
   const links = extractLinks(description);
 
   return (
@@ -49,9 +32,7 @@ export function TaskInfoModal({ open, onClose, title, description }: TaskInfoMod
           <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
             Description
           </h4>
-          <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
-            {renderWithLinks(description)}
-          </p>
+          <RichTextViewer content={description} onContentChange={onDescriptionChange} />
         </div>
 
         {/* References — only when links exist */}

@@ -5,11 +5,13 @@ import { CompletedTaskCard } from '@/components/CompletedTaskCard';
 import { PipelineTaskCard } from '@/components/PipelineTaskCard';
 import { DroppedTaskCard } from '@/components/DroppedTaskCard';
 import { Button } from '@/components/Button';
-import { Input, Textarea } from '@/components/Input';
+import { Input } from '@/components/Input';
+import { RichTextEditor } from '@/components/RichTextEditor';
 import { Modal } from '@/components/Modal';
 import { Badge } from '@/components/Badge';
 import { ImageReferences } from '@/components/ImageReferences';
 import { Plus, ArrowLeft, Archive, Bell, Search, LayoutDashboard } from 'lucide-react';
+import { stripHtml } from '@/lib/utils';
 
 type Tab = 'active' | 'completed' | 'overdue' | 'pipeline' | 'dropped';
 
@@ -104,15 +106,15 @@ export function ServiceDetailPage({
   const serviceMap = Object.fromEntries(state.services.map((s) => [s.id, s.name]));
 
   const q = search.trim().toLowerCase();
-  const filteredActive = q ? activeTasks.filter((t) => t.title.toLowerCase().includes(q) || (t.description ?? '').toLowerCase().includes(q)) : activeTasks;
+  const filteredActive = q ? activeTasks.filter((t) => t.title.toLowerCase().includes(q) || stripHtml(t.description ?? '').toLowerCase().includes(q)) : activeTasks;
   const filteredOverdue = q ? overdueTasks.filter((ot) => {
     const task = activeTasks.find((t) => t.id === ot.id);
     return task?.title.toLowerCase().includes(q) || (task?.description ?? '').toLowerCase().includes(q);
   }) : overdueTasks;
-  const filteredPipeline = q ? pipelineTasks.filter((t) => t.title.toLowerCase().includes(q) || (t.description ?? '').toLowerCase().includes(q)) : pipelineTasks;
-  const filteredDropped = q ? droppedTasks.filter((t) => t.title.toLowerCase().includes(q) || (t.description ?? '').toLowerCase().includes(q)) : droppedTasks;
+  const filteredPipeline = q ? pipelineTasks.filter((t) => t.title.toLowerCase().includes(q) || stripHtml(t.description ?? '').toLowerCase().includes(q)) : pipelineTasks;
+  const filteredDropped = q ? droppedTasks.filter((t) => t.title.toLowerCase().includes(q) || stripHtml(t.description ?? '').toLowerCase().includes(q)) : droppedTasks;
   const filteredCompletedMonths = q
-    ? completedMonths.map((m) => ({ ...m, tasks: m.tasks.filter((t) => t.title.toLowerCase().includes(q) || (t.description ?? '').toLowerCase().includes(q)) })).filter((m) => m.tasks.length > 0)
+    ? completedMonths.map((m) => ({ ...m, tasks: m.tasks.filter((t) => t.title.toLowerCase().includes(q) || stripHtml(t.description ?? '').toLowerCase().includes(q)) })).filter((m) => m.tasks.length > 0)
     : completedMonths;
 
   function handleCreate() {
@@ -371,12 +373,10 @@ export function ServiceDetailPage({
             onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
             autoFocus
           />
-          <Textarea
-            label="Description (optional)"
-            placeholder="Add details..."
-            value={form.description}
-            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-          />
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Description (optional)</label>
+            <RichTextEditor value={form.description} onChange={(html) => setForm((f) => ({ ...f, description: html }))} placeholder="Add details…" />
+          </div>
           {/* Pipeline toggle */}
           <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30">
             <input

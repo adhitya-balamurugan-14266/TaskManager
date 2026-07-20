@@ -9,3 +9,96 @@ body {
   margin: 0;
   -webkit-font-smoothing: antialiased;
 }
+
+/* ── Tiptap rich text styles (editor + viewer) ───────────────────────── */
+.rich-editor .tiptap,
+.rich-content {
+  outline: none;
+}
+
+.rich-editor .tiptap p,
+.rich-content p { margin: 0 0 0.5em; }
+.rich-editor .tiptap p:last-child,
+.rich-content p:last-child { margin-bottom: 0; }
+
+.rich-editor .tiptap h1,
+.rich-content h1 { font-size: 1.25rem; font-weight: 700; margin: 0.75em 0 0.4em; }
+.rich-editor .tiptap h2,
+.rich-content h2 { font-size: 1.1rem; font-weight: 600; margin: 0.6em 0 0.3em; }
+
+.rich-editor .tiptap ul,
+.rich-editor .tiptap ol,
+.rich-content ul,
+.rich-content ol { padding-left: 1.4em; margin: 0.4em 0; }
+.rich-editor .tiptap li,
+.rich-content li { margin: 0.15em 0; }
+
+/* Checklist */
+.rich-editor .tiptap ul[data-type="taskList"],
+.rich-content ul[data-type="taskList"] { list-style: none; padding-left: 0.25em; }
+
+.rich-editor .tiptap li[data-type="taskItem"],
+.rich-content li[data-type="taskItem"] {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+  margin: 0.25em 0;
+}
+
+.rich-editor .tiptap li[data-type="taskItem"] > label,
+.rich-content li[data-type="taskItem"] > label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+  cursor: pointer;
+  user-select: none;
+}
+
+.rich-editor .tiptap li[data-type="taskItem"] input[type="checkbox"],
+.rich-content li[data-type="taskItem"] input[type="checkbox"] {
+  margin-top: 0.15em;
+  width: 1em;
+  height: 1em;
+  cursor: pointer;
+  accent-color: #3b82f6;
+  flex-shrink: 0;
+}
+
+/* Strike checked items */
+.rich-editor .tiptap li[data-type="taskItem"][data-checked="true"] > label > div,
+.rich-editor .tiptap li[data-type="taskItem"][data-checked="true"] > label > span,
+.rich-content li[data-type="taskItem"][data-checked="true"] > label > span {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+
+/* Links */
+.rich-editor .tiptap a,
+.rich-content a {
+  color: #3b82f6;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+.dark .rich-editor .tiptap a,
+.dark .rich-content a { color: #60a5fa; }
+
+/* Placeholder */
+.rich-editor .tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: #9ca3af;
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+.dark .rich-editor .tiptap p.is-editor-empty:first-child::before { color: #6b7280; }
+
+/* Strong / em */
+.rich-editor .tiptap strong,
+.rich-content strong { font-weight: 600; }
+.rich-editor .tiptap em,
+.rich-content em { font-style: italic; }
+.rich-editor .tiptap s,
+.rich-content s { text-decoration: line-through; }
+.rich-editor .tiptap u,
+.rich-content u { text-decoration: underline; text-underline-offset: 2px; }

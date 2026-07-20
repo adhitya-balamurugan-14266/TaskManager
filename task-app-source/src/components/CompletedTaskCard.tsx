@@ -6,7 +6,7 @@ import { Modal } from '@/components/Modal';
 import { Textarea } from '@/components/Input';
 import { ImageReferences } from '@/components/ImageReferences';
 import { ImageLightbox } from '@/components/ImageLightbox';
-import { formatDate } from '@/lib/utils';
+import { formatDate, stripHtml } from '@/lib/utils';
 import { Trash2, Layers, Edit2, Image as ImageIcon, Info } from 'lucide-react';
 import { TaskInfoModal } from '@/components/TaskInfoModal';
 
@@ -45,7 +45,7 @@ export function CompletedTaskCard({ task, serviceName, onDelete, onMoveToPipelin
           <div className="flex-1 min-w-0">
             <h3 className="font-medium text-gray-600 dark:text-gray-300 truncate line-through">{task.title}</h3>
             {task.description && (
-              <p className="text-sm text-gray-400 mt-0.5 line-clamp-2">{task.description}</p>
+              <p className="text-sm text-gray-400 mt-0.5 line-clamp-2">{stripHtml(task.description)}</p>
             )}
           </div>
           <Badge variant="completed">Completed</Badge>

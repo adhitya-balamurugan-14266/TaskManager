@@ -6,7 +6,8 @@ import { Modal } from '@/components/Modal';
 import { Input, Textarea } from '@/components/Input';
 import { ImageReferences } from '@/components/ImageReferences';
 import { ImageLightbox } from '@/components/ImageLightbox';
-import { formatDate } from '@/lib/utils';
+import { formatDate, stripHtml } from '@/lib/utils';
+import { RichTextEditor } from '@/components/RichTextEditor';
 import { Trash2, ArrowRight, Edit2, AlertTriangle, ClipboardCheck, Image as ImageIcon, Info } from 'lucide-react';
 import { TaskInfoModal } from '@/components/TaskInfoModal';
 
@@ -128,7 +129,7 @@ export function PipelineTaskCard({ task, serviceName, userEmail, onDelete, onAct
               )}
             </div>
             {task.description && (
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{task.description}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{stripHtml(task.description)}</p>
             )}
           </div>
           <Badge variant="pipeline">Pipeline</Badge>
@@ -274,11 +275,10 @@ export function PipelineTaskCard({ task, serviceName, userEmail, onDelete, onAct
             value={editForm.title}
             onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))}
           />
-          <Textarea
-            label="Description (optional)"
-            value={editForm.description}
-            onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
-          />
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Description (optional)</label>
+            <RichTextEditor value={editForm.description} onChange={(html) => setEditForm((f) => ({ ...f, description: html }))} />
+          </div>
           <Textarea
             label="Pipeline reason (optional)"
             placeholder="Why is this task in pipeline?"
@@ -387,6 +387,7 @@ export function PipelineTaskCard({ task, serviceName, userEmail, onDelete, onAct
           onClose={() => setInfoOpen(false)}
           title={task.title}
           description={task.description}
+          onDescriptionChange={(html) => onUpdate(task.id, { description: html })}
         />
       )}
     </>

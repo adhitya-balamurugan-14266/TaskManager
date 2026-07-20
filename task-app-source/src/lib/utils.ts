@@ -41,3 +41,15 @@ export function extractDate(iso: string): string {
 export function isOverdue(due_date: string): boolean {
   return new Date(due_date) < new Date();
 }
+
+/** Strips HTML tags from a string, returning plain text for card previews. */
+export function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** Wraps plain text in a <p> tag so Tiptap can load legacy descriptions. */
+export function normalizeToHtml(content: string): string {
+  if (!content) return '';
+  if (/<[a-z][\s\S]*>/i.test(content)) return content;
+  return content.split('\n').map((line) => `<p>${line || '<br>'}</p>`).join('');
+}

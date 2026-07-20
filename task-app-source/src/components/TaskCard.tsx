@@ -6,7 +6,8 @@ import { Modal } from '@/components/Modal';
 import { Input, Textarea } from '@/components/Input';
 import { ImageReferences } from '@/components/ImageReferences';
 import { ImageLightbox } from '@/components/ImageLightbox';
-import { formatDate, formatDateTime, extractDate, extractTime, isOverdue } from '@/lib/utils';
+import { formatDate, formatDateTime, extractDate, extractTime, isOverdue, stripHtml } from '@/lib/utils';
+import { RichTextEditor } from '@/components/RichTextEditor';
 import { CheckCircle, Trash2, Edit2, Bell, BellOff, Layers, Flame, Image as ImageIcon, CalendarClock, Info } from 'lucide-react';
 import { TaskInfoModal } from '@/components/TaskInfoModal';
 
@@ -96,7 +97,7 @@ export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, on
           <div className="flex-1 min-w-0">
             <h3 className="font-medium text-gray-900 dark:text-gray-100 truncate">{task.title}</h3>
             {task.description && (
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{task.description}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{stripHtml(task.description)}</p>
             )}
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -193,7 +194,10 @@ export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, on
       <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit Task">
         <div className="flex flex-col gap-4">
           <Input label="Title" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} />
-          <Textarea label="Description (optional)" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Description (optional)</label>
+            <RichTextEditor value={form.description} onChange={(html) => setForm((f) => ({ ...f, description: html }))} />
+          </div>
           <Input
             label="Days assigned"
             type="number"
@@ -286,6 +290,7 @@ export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, on
           onClose={() => setInfoOpen(false)}
           title={task.title}
           description={task.description}
+          onDescriptionChange={(html) => onUpdate(task.id, { description: html })}
         />
       )}
 
