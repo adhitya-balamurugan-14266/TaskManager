@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { cn } from '@/lib/utils';
 
 interface ModalProps {
@@ -10,11 +10,13 @@ interface ModalProps {
 }
 
 export function Modal({ open, onClose, title, children, className }: ModalProps) {
+  const mouseDownOnBackdrop = useRef(false);
   if (!open) return null;
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onMouseDown={(e) => { mouseDownOnBackdrop.current = e.target === e.currentTarget; }}
+      onClick={(e) => { if (e.target === e.currentTarget && mouseDownOnBackdrop.current) onClose(); }}
     >
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
       <div
