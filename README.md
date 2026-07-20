@@ -58,6 +58,15 @@ A full-stack task management application built on **Zoho Catalyst** — manage s
 - Overdue task cards show a dedicated amber **"Reschedule"** button. Clicking it opens a focused modal pre-filled with a sensible next-day default. The confirm button is disabled until a future date is chosen — preventing accidental re-saves of a past date.
 - On save, the task's due date is updated (and any active reminder cron is rescheduled automatically). The task immediately leaves the overdue state and returns to the **Active** tab.
 
+### Hyperlinks & Reference Panel
+- Paste any URL directly into a task's description field — no special formatting needed.
+- When viewing a task, click the **ⓘ Info button** (next to the Edit button) to open the info panel.
+- The panel has two sections:
+  - **Description** — full description rendered with all URLs as clickable blue links that open in a new tab.
+  - **References** — only shown when links exist; every URL extracted from the description is listed as a tappable tile with an external link icon for one-click access.
+- Works across all task states: Active, Completed, Pipeline, and Dropped.
+- The Info button only appears when the task has a description.
+
 ### Image References
 - Attach reference images to any task (active, pipeline, or completed) via the create/edit modals.
 - Images are uploaded to Catalyst Stratus and the URLs are stored in the `image_references` column.
