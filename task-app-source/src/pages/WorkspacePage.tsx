@@ -298,6 +298,16 @@ function MonthArchiveAccordion({
   const [open, setOpen] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
+  // Per-service completed counts for this month
+  const byService = completedTasks.reduce<Record<string, number>>((acc, t) => {
+    acc[t.service_id] = (acc[t.service_id] || 0) + 1;
+    return acc;
+  }, {});
+  const serviceEntries = Object.entries(byService)
+    .map(([id, count]) => ({ service: serviceMap[id], count }))
+    .filter((e) => e.service)
+    .sort((a, b) => b.count - a.count);
+
   return (
     <div className="rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-900">
       {/* Collapsed header */}
@@ -317,8 +327,8 @@ function MonthArchiveAccordion({
           </div>
         )}
 
-        {/* Count chips */}
-        <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
+        {/* Count chips + per-service breakdown */}
+        <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
           {snapshot ? (
             <>
               <CountChip label="Active" value={snapshot.active_count} colorClass="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" />
@@ -330,7 +340,26 @@ function MonthArchiveAccordion({
           ) : (
             <>
               <CountChip label="Completed" value={completedTasks.length} colorClass="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300" />
-              <span className="text-xs text-gray-400 dark:text-gray-500 self-center">No snapshot</span>
+              <span className="text-xs text-gray-400 dark:text-gray-500">No snapshot</span>
+            </>
+          )}
+
+          {/* Per-service completed breakdown */}
+          {serviceEntries.length > 0 && (
+            <>
+              <span className="w-px h-4 bg-gray-200 dark:bg-gray-700 mx-0.5 shrink-0" />
+              {serviceEntries.map(({ service, count }) => (
+                <span
+                  key={service.id}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400"
+                >
+                  {service.logo_url
+                    ? <img src={service.logo_url} alt={service.name} className="h-3 w-3 rounded object-cover shrink-0" />
+                    : <Building2 className="size-2.5 shrink-0" />}
+                  <span className="font-semibold text-gray-700 dark:text-gray-300">{count}</span>
+                  <span className="truncate max-w-[80px]">{service.name}</span>
+                </span>
+              ))}
             </>
           )}
         </div>
