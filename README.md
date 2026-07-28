@@ -100,6 +100,17 @@ A full-stack task management application built on **Zoho Catalyst** — manage s
 - **Go to service** button in the task detail panel navigates directly to the matching tab in that service's view (e.g. a completed task opens the **Completed** tab).
 - Jump to any service directly via the ⋯ meatball menu.
 
+### Monthly Kanban Archive
+- On every Workspace load, the app silently upserts a **snapshot** for the current month — recording the live counts of active, pipeline, dropped, completed, and overdue tasks.
+- Simultaneously, a **`html2canvas` screenshot** of the Kanban board is captured 2 seconds after render, uploaded directly to Catalyst Stratus, and attached to the snapshot record.
+- When a new month begins, all non-completed tasks from the previous month carry forward into the new Kanban automatically (they never disappear — they're still active/pipeline/etc.).
+- **Past months** appear below the Kanban as collapsed **accordion rows**, newest first. Each row shows:
+  - Month name (e.g. *July 2026*)
+  - A small thumbnail of the Kanban screenshot from that month
+  - Count chips: `13 Active · 10 Pipeline · 2 Dropped · 40 Completed · 7 Overdue`
+- **Expanding an accordion** reveals the full Kanban screenshot (click to zoom) and a green card grid of every completed task from that month, each showing the task title and service name.
+- Snapshot upserts happen silently in the background — no loading bar flash, no interruption to normal use.
+
 ### Search
 - **Service detail view** — search bar above tabs filters the active, overdue, pipeline, completed, and dropped task lists by title or description.
 - **Workspace / Kanban** — search bar in the sticky header filters all five columns simultaneously.
@@ -194,6 +205,9 @@ TaskManager/
 | `PUT` | `/execute/tasks/:id/drop` | Drop a pipeline task (requires reason) |
 | `PUT` | `/execute/tasks/:id/pipeline-review` | Keep task in pipeline and reset its 2-week timer |
 | `DELETE` | `/execute/tasks/:id` | Delete a task |
+| `POST` | `/execute/snapshots` | Upsert monthly snapshot counts |
+| `POST` | `/execute/snapshots/screenshot-upload` | Get a presigned Stratus PUT URL for snapshot screenshot |
+| `PUT` | `/execute/snapshots/:month/screenshot` | Attach screenshot URL to an existing snapshot |
 
 ---
 
@@ -231,6 +245,18 @@ TaskManager/
 | `dropped_date` | varchar | ISO timestamp when the task was dropped |
 | `image_references` | text | JSON array of Stratus image URLs (optional) |
 
+### `MonthlySnapshots`
+| Column | Type | Notes |
+|---|---|---|
+| `ROWID` | bigint | Primary key |
+| `snapshot_month` | varchar | `YYYY-MM` format — unique per month |
+| `active_count` | integer | Active task count at snapshot time |
+| `pipeline_count` | integer | Pipeline task count at snapshot time |
+| `dropped_count` | integer | Dropped task count for that month |
+| `overdue_count` | integer | Overdue task count at snapshot time |
+| `completed_count` | integer | Completed task count for that month |
+| `screenshot_url` | varchar | Stratus object URL for the Kanban screenshot (optional) |
+
 ---
 
 ## Stratus Object Storage
@@ -238,9 +264,11 @@ TaskManager/
 - **Bucket:** `taskmanager-175003` (public read)
 - **Logo path:** `service-logos/<timestamp>-<filename>`
 - **Task image path:** `task-images/<timestamp>-<filename>`
+- **Snapshot screenshot path:** `month-snapshots/YYYY-MM.png`
 - Upload flow: frontend requests a presigned PUT URL from `task_api` → browser PUTs the file directly to Stratus → the returned object URL is saved in Datastore.
 - Logos are auto-deleted from Stratus when the service is deleted.
 - Task images are auto-deleted from Stratus when removed from the edit form or when the task is deleted.
+- Snapshot screenshot paths are fixed per month — re-uploading overwrites the previous screenshot for that month.
 
 ---
 
@@ -274,20 +302,6 @@ catalyst deploy --only slate:task-manager
 # Deploy only backend
 catalyst deploy --only functions:task_api
 ```
-
-### Environment Variables
-
-**`task_reminder` function:**
-| Variable | Description |
-|---|---|
-| `MAIL_FROM_ADDRESS` | Sender email address for due-date reminder emails |
-| `MAIL_TO_ADDRESS` | Fallback recipient if task has no `reminder_email` |
-
-**`pipeline_review_job` function:**
-| Variable | Description |
-|---|---|
-| `MAIL_FROM_ADDRESS` | Sender email address for pipeline alert emails |
-| `MAIL_TO_ADDRESS` | Recipient for pipeline review alert emails |
 
 ---
 

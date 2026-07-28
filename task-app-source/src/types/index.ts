@@ -85,6 +85,19 @@ export interface OverdueTask {
   days_overdue: number;
 }
 
+/** A frozen month-end snapshot stored when a new month begins. */
+export interface MonthlySnapshot {
+  id: string;
+  month: string;            // "YYYY-MM"
+  active_count: number;
+  pipeline_count: number;
+  dropped_count: number;
+  overdue_count: number;
+  completed_count: number;
+  screenshot_url: string | null;
+  updated_at: string;
+}
+
 /**
  * Full application state returned by GET /state.
  * completed tasks are keyed by "YYYY-MM" for the monthly archive view.
@@ -98,10 +111,20 @@ export interface AppState {
     dropped: DroppedTask[];
   };
   overdue: OverdueTask[];
+  snapshots: MonthlySnapshot[];
   last_updated: string;
 }
 
 // Action payloads
+export interface UpsertSnapshotPayload {
+  month: string;
+  active_count: number;
+  pipeline_count: number;
+  dropped_count: number;
+  overdue_count: number;
+  completed_count: number;
+}
+export interface AttachSnapshotScreenshotPayload { month: string; screenshot_url: string; }
 export interface CreateServicePayload { name: string; logo_url?: string | null; }
 export interface DeleteServicePayload { service_id: string; }
 export interface CreateTaskPayload {

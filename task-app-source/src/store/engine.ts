@@ -21,6 +21,8 @@ import type {
   MoveToPipelinePayload,
   DropTaskPayload,
   PipelineReviewPayload,
+  UpsertSnapshotPayload,
+  AttachSnapshotScreenshotPayload,
 } from '@/types';
 
 const BASE_URL =
@@ -151,4 +153,28 @@ export async function dropTask(_state: AppState, payload: DropTaskPayload) {
 export async function pipelineReview(_state: AppState, payload: PipelineReviewPayload) {
   const { task_id, ...body } = payload;
   return apiFetch(`/tasks/${task_id}/pipeline-review`, { method: 'PUT', body: JSON.stringify(body) });
+}
+
+export async function upsertSnapshot(_state: AppState, payload: UpsertSnapshotPayload) {
+  return apiFetch('/snapshots', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export async function attachSnapshotScreenshot(_state: AppState, payload: AttachSnapshotScreenshotPayload) {
+  const { month, ...body } = payload;
+  return apiFetch(`/snapshots/${month}/screenshot`, { method: 'PUT', body: JSON.stringify(body) });
+}
+
+export async function getSnapshotScreenshotUploadUrl(month: string): Promise<{ presigned_url: string; object_url: string } | { error: string }> {
+  try {
+    const res = await fetch(`${BASE_URL}/snapshots/screenshot-upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ month }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error ?? `HTTP ${res.status}` };
+    return data as { presigned_url: string; object_url: string };
+  } catch (err: unknown) {
+    return { error: err instanceof Error ? err.message : 'Network error' };
+  }
 }

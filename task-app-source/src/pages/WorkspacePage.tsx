@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import type { AppState, Service, ActiveTask, CompletedTask, PipelineTask, DroppedTask } from '@/types';
+import type { AppState, Service, ActiveTask, CompletedTask, PipelineTask, DroppedTask, MonthlySnapshot, UpsertSnapshotPayload, AttachSnapshotScreenshotPayload } from '@/types';
 import { Modal } from '@/components/Modal';
 import { Badge } from '@/components/Badge';
 import { ImageLightbox } from '@/components/ImageLightbox';
@@ -16,12 +16,17 @@ import {
   Search,
   XCircle,
   Image as ImageIcon,
+  ChevronDown,
+  Camera,
 } from 'lucide-react';
 
 interface WorkspacePageProps {
   state: AppState;
   onBack: () => void;
   onSelectService: (service: Service, tab?: string) => void;
+  onUpsertSnapshot: (p: UpsertSnapshotPayload) => Promise<void>;
+  onAttachSnapshotScreenshot: (p: AttachSnapshotScreenshotPayload) => Promise<void>;
+  getSnapshotScreenshotUploadUrl: (month: string) => Promise<{ presigned_url: string; object_url: string } | { error: string }>;
 }
 
 type SelectedTask =
@@ -30,6 +35,17 @@ type SelectedTask =
   | { kind: 'overdue'; task: ActiveTask; service: Service; days_overdue: number }
   | { kind: 'pipeline'; task: PipelineTask; service: Service }
   | { kind: 'dropped'; task: DroppedTask; service: Service };
+
+// ─── Helpers ────────────────────────────────────────────────────────────────────
+
+function formatMonth(yyyyMm: string): string {
+  const [year, month] = yyyyMm.split('-').map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+function currentMonthKey(): string {
+  return new Date().toISOString().slice(0, 7);
+}
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
@@ -145,7 +161,6 @@ function TaskDetailContent({
 
   return (
     <div className="space-y-4">
-      {/* Service breadcrumb */}
       <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
         <div className="h-5 w-5 rounded-md overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center shrink-0 border border-gray-200 dark:border-gray-700">
           {service.logo_url
@@ -155,22 +170,15 @@ function TaskDetailContent({
         <span>{service.name}</span>
       </div>
 
-      {/* Title + badge */}
       <div className="space-y-2">
-        <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 leading-snug">
-          {task.title}
-        </h3>
+        <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 leading-snug">{task.title}</h3>
         <Badge
           variant={
-            selected.kind === 'active'
-              ? 'active'
-              : selected.kind === 'completed'
-              ? 'completed'
-              : selected.kind === 'pipeline'
-              ? 'pipeline'
-              : selected.kind === 'dropped'
-              ? 'dropped'
-              : 'overdue'
+            selected.kind === 'active' ? 'active'
+            : selected.kind === 'completed' ? 'completed'
+            : selected.kind === 'pipeline' ? 'pipeline'
+            : selected.kind === 'dropped' ? 'dropped'
+            : 'overdue'
           }
         >
           {selected.kind === 'overdue'
@@ -179,14 +187,12 @@ function TaskDetailContent({
         </Badge>
       </div>
 
-      {/* Description */}
       {task.description && (
         <p className="text-sm text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/60 rounded-xl px-3 py-2.5 leading-relaxed">
           {task.description}
         </p>
       )}
 
-      {/* Detail grid */}
       {selected.kind !== 'pipeline' && selected.kind !== 'dropped' && (
         <div className="grid grid-cols-2 gap-2.5">
           <div className="rounded-xl bg-gray-50 dark:bg-gray-800 px-3 py-2.5">
@@ -235,24 +241,6 @@ function TaskDetailContent({
         </div>
       )}
 
-      {selected.kind === 'dropped' && (
-        <div className="space-y-2">
-          <div className="rounded-xl bg-gray-50 dark:bg-gray-800 px-3 py-2.5">
-            <p className="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Dropped On</p>
-            <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
-              {formatDateTime(selected.task.dropped_date)}
-            </p>
-          </div>
-          <div className="rounded-xl bg-gray-50 dark:bg-gray-800 px-3 py-2.5">
-            <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Reason for dropping</p>
-            <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-              {selected.task.dropped_reason}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Image References */}
       {images.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -273,7 +261,6 @@ function TaskDetailContent({
         </div>
       )}
 
-      {/* Go to service */}
       <button
         onClick={onViewService}
         className="w-full flex items-center justify-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm font-medium text-gray-700 dark:text-gray-200 px-4 py-2.5 transition-colors"
@@ -282,23 +269,156 @@ function TaskDetailContent({
         <ArrowRight className="size-4" />
       </button>
 
-      <ImageLightbox
-        images={images}
-        open={lightboxOpen}
-        onClose={() => setLightboxOpen(false)}
-      />
+      <ImageLightbox images={images} open={lightboxOpen} onClose={() => setLightboxOpen(false)} />
+    </div>
+  );
+}
+
+function CountChip({ label, value, colorClass }: { label: string; value: number; colorClass: string }) {
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${colorClass}`}>
+      <span className="font-bold">{value}</span> {label}
+    </span>
+  );
+}
+
+function MonthArchiveAccordion({
+  month,
+  snapshot,
+  completedTasks,
+  serviceMap,
+  onOpenTask,
+}: {
+  month: string;
+  snapshot: MonthlySnapshot | undefined;
+  completedTasks: CompletedTask[];
+  serviceMap: Record<string, Service>;
+  onOpenTask: (task: CompletedTask, service: Service) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+
+  return (
+    <div className="rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-900">
+      {/* Collapsed header */}
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center gap-3 px-5 py-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-left"
+      >
+        {/* Month name */}
+        <span className="font-semibold text-gray-900 dark:text-gray-100 shrink-0 min-w-[110px]">
+          {formatMonth(month)}
+        </span>
+
+        {/* Screenshot thumbnail */}
+        {snapshot?.screenshot_url && (
+          <div className="shrink-0 h-10 w-16 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-600 bg-gray-100 dark:bg-gray-800">
+            <img src={snapshot.screenshot_url} alt={`${formatMonth(month)} snapshot`} className="w-full h-full object-cover object-top" />
+          </div>
+        )}
+
+        {/* Count chips */}
+        <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
+          {snapshot ? (
+            <>
+              <CountChip label="Active" value={snapshot.active_count} colorClass="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300" />
+              <CountChip label="Pipeline" value={snapshot.pipeline_count} colorClass="bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300" />
+              <CountChip label="Dropped" value={snapshot.dropped_count} colorClass="bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400" />
+              <CountChip label="Completed" value={snapshot.completed_count} colorClass="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300" />
+              <CountChip label="Overdue" value={snapshot.overdue_count} colorClass="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300" />
+            </>
+          ) : (
+            <>
+              <CountChip label="Completed" value={completedTasks.length} colorClass="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300" />
+              <span className="text-xs text-gray-400 dark:text-gray-500 self-center">No snapshot</span>
+            </>
+          )}
+        </div>
+
+        <ChevronDown className={`size-4 text-gray-400 shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {/* Expanded content */}
+      {open && (
+        <div className="border-t border-gray-100 dark:border-gray-800">
+          {/* Kanban screenshot */}
+          {snapshot?.screenshot_url && (
+            <div className="p-4 bg-gray-50 dark:bg-gray-950 border-b border-gray-100 dark:border-gray-800">
+              <div className="flex items-center gap-2 mb-2">
+                <Camera className="size-3.5 text-gray-400" />
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Kanban Snapshot</p>
+              </div>
+              <div className="rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 cursor-zoom-in" onClick={() => setLightboxOpen(true)}>
+                <img src={snapshot.screenshot_url} alt={`${formatMonth(month)} Kanban`} className="w-full" />
+              </div>
+              <ImageLightbox
+                images={[snapshot.screenshot_url]}
+                open={lightboxOpen}
+                onClose={() => setLightboxOpen(false)}
+              />
+            </div>
+          )}
+
+          {/* Completed tasks */}
+          {completedTasks.length > 0 ? (
+            <div className="p-4 bg-white dark:bg-gray-900">
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-1.5">
+                <CheckCircle2 className="size-3.5 text-emerald-500" />
+                Completed Tasks ({completedTasks.length})
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {completedTasks.map((task) => {
+                  const svc = serviceMap[task.service_id];
+                  return (
+                    <button
+                      key={task.id}
+                      onClick={() => svc && onOpenTask(task, svc)}
+                      className="flex items-start gap-3 rounded-xl border border-emerald-200 dark:border-emerald-800/50 bg-emerald-50 dark:bg-emerald-950/20 px-3 py-2.5 text-left hover:border-emerald-300 dark:hover:border-emerald-700 transition-colors"
+                    >
+                      <CheckCircle2 className="size-4 text-emerald-500 shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-200 line-through line-clamp-1">{task.title}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          {svc?.logo_url
+                            ? <img src={svc.logo_url} alt={svc?.name} className="h-3.5 w-3.5 rounded object-cover" />
+                            : <Building2 className="size-3 text-gray-400" />}
+                          <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{svc?.name ?? '—'}</p>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="p-8 text-center text-sm text-gray-400 dark:text-gray-600">
+              No completed tasks for this month.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── Main Page ──────────────────────────────────────────────────────────────────
 
-export function WorkspacePage({ state, onBack, onSelectService }: WorkspacePageProps) {
+export function WorkspacePage({
+  state,
+  onBack,
+  onSelectService,
+  onUpsertSnapshot,
+  onAttachSnapshotScreenshot,
+  getSnapshotScreenshotUploadUrl,
+}: WorkspacePageProps) {
   const [selected, setSelected] = useState<SelectedTask | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [search, setSearch] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
+  const kanbanRef = useRef<HTMLDivElement>(null);
+  const hasSnapshotted = useRef(false);
 
+  const thisMonth = currentMonthKey();
   const serviceMap = Object.fromEntries(state.services.map((s) => [s.id, s]));
 
   const overdueIds = new Set(state.overdue.map((t) => t.id));
@@ -320,6 +440,67 @@ export function WorkspacePage({ state, onBack, onSelectService }: WorkspacePageP
       if (a.task.is_priority !== b.task.is_priority) return a.task.is_priority ? -1 : 1;
       return new Date(a.task.due_date).getTime() - new Date(b.task.due_date).getTime();
     });
+
+  // ── Auto-snapshot on every Workspace mount ──────────────────────────────────
+  useEffect(() => {
+    if (hasSnapshotted.current) return;
+    hasSnapshotted.current = true;
+
+    const droppedThisMonth = (state.tasks.dropped ?? []).filter(
+      (t) => t.dropped_date?.startsWith(thisMonth)
+    ).length;
+    const completedThisMonth = (state.tasks.completed[thisMonth] ?? []).length;
+
+    onUpsertSnapshot({
+      month: thisMonth,
+      active_count: state.tasks.active.length,
+      pipeline_count: pipelineTasks.length,
+      dropped_count: droppedThisMonth,
+      overdue_count: state.overdue.length,
+      completed_count: completedThisMonth,
+    }).then(() => {
+      // Capture screenshot after Kanban has fully rendered
+      setTimeout(async () => {
+        if (!kanbanRef.current) return;
+        try {
+          const html2canvas = (await import('html2canvas')).default;
+          const isDark = document.documentElement.classList.contains('dark');
+          const canvas = await html2canvas(kanbanRef.current, {
+            scale: 0.6,
+            useCORS: true,
+            logging: false,
+            backgroundColor: isDark ? '#030712' : '#f9fafb',
+          });
+          canvas.toBlob(async (blob) => {
+            if (!blob) return;
+            const urlResult = await getSnapshotScreenshotUploadUrl(thisMonth);
+            if ('error' in urlResult) return;
+            const uploadRes = await fetch(urlResult.presigned_url, {
+              method: 'PUT',
+              body: blob,
+              headers: { 'Content-Type': 'image/png' },
+            });
+            if (!uploadRes.ok) return;
+            await onAttachSnapshotScreenshot({ month: thisMonth, screenshot_url: urlResult.object_url });
+          }, 'image/png', 0.85);
+        } catch (e) {
+          console.warn('[WorkspacePage] Screenshot capture failed:', e);
+        }
+      }, 2000);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Build archive month list (all months except current, newest first) ──────
+  const archiveMonths = Array.from(
+    new Set([
+      ...state.snapshots.map((s) => s.month),
+      ...Object.keys(state.tasks.completed),
+    ])
+  )
+    .filter((m) => m !== thisMonth)
+    .sort()
+    .reverse();
 
   const q = search.trim().toLowerCase();
   const filterTask = (t: { title: string; description?: string | null }) =>
@@ -357,7 +538,6 @@ export function WorkspacePage({ state, onBack, onSelectService }: WorkspacePageP
     }
   }
 
-  // Close meatball menu on outside click
   useEffect(() => {
     function handleOutside(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -373,7 +553,6 @@ export function WorkspacePage({ state, onBack, onSelectService }: WorkspacePageP
       {/* Sticky header */}
       <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 py-4 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto space-y-3">
-          {/* Title row */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <button
@@ -385,7 +564,7 @@ export function WorkspacePage({ state, onBack, onSelectService }: WorkspacePageP
               <div>
                 <h1 className="text-xl font-bold text-gray-900 dark:text-white">My Workspace</h1>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {activeTasks.length} active · {pipelineTasks.length} pipeline · {completedTasks.length} completed · {overdueTasks.length} overdue{droppedTasks.length > 0 ? ` · ${droppedTasks.length} dropped` : ''}
+                  {formatMonth(thisMonth)} · {activeTasks.length} active · {pipelineTasks.length} pipeline · {completedTasks.length} completed · {overdueTasks.length} overdue{droppedTasks.length > 0 ? ` · ${droppedTasks.length} dropped` : ''}
                 </p>
               </div>
             </div>
@@ -406,19 +585,14 @@ export function WorkspacePage({ state, onBack, onSelectService }: WorkspacePageP
                     Jump to Service
                   </p>
                   {state.services.length === 0 ? (
-                    <p className="px-4 py-2 pb-3 text-sm text-gray-400 dark:text-gray-500">
-                      No services yet
-                    </p>
+                    <p className="px-4 py-2 pb-3 text-sm text-gray-400 dark:text-gray-500">No services yet</p>
                   ) : (
                     state.services.map((s) => {
                       const activeCount = state.tasks.active.filter((t) => t.service_id === s.id).length;
                       return (
                         <button
                           key={s.id}
-                          onClick={() => {
-                            setMenuOpen(false);
-                            onSelectService(s);
-                          }}
+                          onClick={() => { setMenuOpen(false); onSelectService(s); }}
                           className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                         >
                           <div className="h-6 w-6 rounded-md shrink-0 overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center border border-gray-200 dark:border-gray-700">
@@ -455,155 +629,85 @@ export function WorkspacePage({ state, onBack, onSelectService }: WorkspacePageP
         </div>
       </div>
 
-      {/* Kanban board */}
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-5">
+      {/* ── Current month Kanban ─────────────────────────────────────────────── */}
+      <div className="max-w-7xl mx-auto px-4 pt-6 pb-2">
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">{formatMonth(thisMonth)}</span>
+          <span className="text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">Current month</span>
+        </div>
+        <div ref={kanbanRef} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-5">
           {/* ── Dropped ── */}
-          <KanbanColumn
-            title="Dropped"
-            count={visibleDropped.length}
-            headerClass="bg-gray-500 text-white"
-            icon={<XCircle className="size-4" />}
-          >
-            {visibleDropped.length === 0 ? (
-              <p className="text-center text-xs text-gray-400 dark:text-gray-600 py-10">
-                No dropped tasks
-              </p>
-            ) : (
-              visibleDropped.map((t) => (
-                <TaskKanbanCard
-                  key={t.id}
-                  title={t.title}
-                  description={t.description}
-                  serviceName={serviceMap[t.service_id]?.name ?? '—'}
-                  serviceLogoUrl={serviceMap[t.service_id]?.logo_url ?? null}
-                  status="dropped"
-                  onClick={() => openCard('dropped', t.id)}
-                />
-              ))
-            )}
+          <KanbanColumn title="Dropped" count={visibleDropped.length} headerClass="bg-gray-500 text-white" icon={<XCircle className="size-4" />}>
+            {visibleDropped.length === 0
+              ? <p className="text-center text-xs text-gray-400 dark:text-gray-600 py-10">No dropped tasks</p>
+              : visibleDropped.map((t) => (
+                <TaskKanbanCard key={t.id} title={t.title} description={t.description} serviceName={serviceMap[t.service_id]?.name ?? '—'} serviceLogoUrl={serviceMap[t.service_id]?.logo_url ?? null} status="dropped" onClick={() => openCard('dropped', t.id)} />
+              ))}
           </KanbanColumn>
 
           {/* ── Pipeline ── */}
-          <KanbanColumn
-            title="Pipeline"
-            count={visiblePipeline.length}
-            headerClass="bg-violet-600 text-white"
-            icon={<Layers className="size-4" />}
-          >
-            {visiblePipeline.length === 0 ? (
-              <p className="text-center text-xs text-gray-400 dark:text-gray-600 py-10">
-                No pipeline tasks
-              </p>
-            ) : (
-              visiblePipeline.map((t) => (
-                <TaskKanbanCard
-                  key={t.id}
-                  title={t.title}
-                  description={t.description}
-                  serviceName={serviceMap[t.service_id]?.name ?? '—'}
-                  serviceLogoUrl={serviceMap[t.service_id]?.logo_url ?? null}
-                  status="pipeline"
-                  onClick={() => openCard('pipeline', t.id)}
-                />
-              ))
-            )}
+          <KanbanColumn title="Pipeline" count={visiblePipeline.length} headerClass="bg-violet-600 text-white" icon={<Layers className="size-4" />}>
+            {visiblePipeline.length === 0
+              ? <p className="text-center text-xs text-gray-400 dark:text-gray-600 py-10">No pipeline tasks</p>
+              : visiblePipeline.map((t) => (
+                <TaskKanbanCard key={t.id} title={t.title} description={t.description} serviceName={serviceMap[t.service_id]?.name ?? '—'} serviceLogoUrl={serviceMap[t.service_id]?.logo_url ?? null} status="pipeline" onClick={() => openCard('pipeline', t.id)} />
+              ))}
           </KanbanColumn>
 
           {/* ── Active ── */}
-          <KanbanColumn
-            title="Active"
-            count={visibleActive.length}
-            headerClass="bg-blue-600 text-white"
-            icon={<Clock className="size-4" />}
-          >
-            {visibleActive.length === 0 ? (
-              <p className="text-center text-xs text-gray-400 dark:text-gray-600 py-10">
-                No active tasks
-              </p>
-            ) : (
-              visibleActive.map((t) => (
-                <TaskKanbanCard
-                  key={t.id}
-                  title={t.title}
-                  description={t.description}
-                  serviceName={serviceMap[t.service_id]?.name ?? '—'}
-                  serviceLogoUrl={serviceMap[t.service_id]?.logo_url ?? null}
-                  dueDate={t.due_date}
-                  status="active"
-                  isPriority={t.is_priority}
-                  onClick={() => openCard('active', t.id)}
-                />
-              ))
-            )}
+          <KanbanColumn title="Active" count={visibleActive.length} headerClass="bg-blue-600 text-white" icon={<Clock className="size-4" />}>
+            {visibleActive.length === 0
+              ? <p className="text-center text-xs text-gray-400 dark:text-gray-600 py-10">No active tasks</p>
+              : visibleActive.map((t) => (
+                <TaskKanbanCard key={t.id} title={t.title} description={t.description} serviceName={serviceMap[t.service_id]?.name ?? '—'} serviceLogoUrl={serviceMap[t.service_id]?.logo_url ?? null} dueDate={t.due_date} status="active" isPriority={t.is_priority} onClick={() => openCard('active', t.id)} />
+              ))}
           </KanbanColumn>
 
           {/* ── Completed ── */}
-          <KanbanColumn
-            title="Completed"
-            count={visibleCompleted.length}
-            headerClass="bg-emerald-600 text-white"
-            icon={<CheckCircle2 className="size-4" />}
-          >
-            {visibleCompleted.length === 0 ? (
-              <p className="text-center text-xs text-gray-400 dark:text-gray-600 py-10">
-                No completed tasks
-              </p>
-            ) : (
-              visibleCompleted.map((t) => (
-                <TaskKanbanCard
-                  key={t.id}
-                  title={t.title}
-                  description={t.description}
-                  serviceName={serviceMap[t.service_id]?.name ?? '—'}
-                  serviceLogoUrl={serviceMap[t.service_id]?.logo_url ?? null}
-                  dueDate={t.due_date}
-                  status="completed"
-                  onClick={() => openCard('completed', t.id)}
-                />
-              ))
-            )}
+          <KanbanColumn title="Completed" count={visibleCompleted.length} headerClass="bg-emerald-600 text-white" icon={<CheckCircle2 className="size-4" />}>
+            {visibleCompleted.length === 0
+              ? <p className="text-center text-xs text-gray-400 dark:text-gray-600 py-10">No completed tasks</p>
+              : visibleCompleted.map((t) => (
+                <TaskKanbanCard key={t.id} title={t.title} description={t.description} serviceName={serviceMap[t.service_id]?.name ?? '—'} serviceLogoUrl={serviceMap[t.service_id]?.logo_url ?? null} dueDate={t.due_date} status="completed" onClick={() => openCard('completed', t.id)} />
+              ))}
           </KanbanColumn>
 
           {/* ── Overdue ── */}
-          <KanbanColumn
-            title="Overdue"
-            count={visibleOverdue.length}
-            headerClass="bg-red-600 text-white"
-            icon={<AlertTriangle className="size-4" />}
-          >
-            {visibleOverdue.length === 0 ? (
-              <p className="text-center text-xs text-gray-400 dark:text-gray-600 py-10">
-                No overdue tasks
-              </p>
-            ) : (
-              visibleOverdue.map(({ o, task }) => (
-                <TaskKanbanCard
-                  key={task.id}
-                  title={task.title}
-                  description={task.description}
-                  serviceName={serviceMap[task.service_id]?.name ?? '—'}
-                  serviceLogoUrl={serviceMap[task.service_id]?.logo_url ?? null}
-                  dueDate={task.due_date}
-                  status="overdue"
-                  daysOverdue={o.days_overdue}
-                  isPriority={task.is_priority}
-                  onClick={() => openCard('overdue', task.id)}
-                />
-              ))
-            )}
+          <KanbanColumn title="Overdue" count={visibleOverdue.length} headerClass="bg-red-600 text-white" icon={<AlertTriangle className="size-4" />}>
+            {visibleOverdue.length === 0
+              ? <p className="text-center text-xs text-gray-400 dark:text-gray-600 py-10">No overdue tasks</p>
+              : visibleOverdue.map(({ o, task }) => (
+                <TaskKanbanCard key={task.id} title={task.title} description={task.description} serviceName={serviceMap[task.service_id]?.name ?? '—'} serviceLogoUrl={serviceMap[task.service_id]?.logo_url ?? null} dueDate={task.due_date} status="overdue" daysOverdue={o.days_overdue} isPriority={task.is_priority} onClick={() => openCard('overdue', task.id)} />
+              ))}
           </KanbanColumn>
         </div>
       </div>
 
+      {/* ── Monthly Archive ──────────────────────────────────────────────────── */}
+      {archiveMonths.length > 0 && (
+        <div className="max-w-7xl mx-auto px-4 pb-10 mt-8">
+          <div className="flex items-center gap-3 mb-4">
+            <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">Monthly Archive</h2>
+            <span className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">{archiveMonths.length} month{archiveMonths.length !== 1 ? 's' : ''}</span>
+          </div>
+          <div className="space-y-3">
+            {archiveMonths.map((month) => (
+              <MonthArchiveAccordion
+                key={month}
+                month={month}
+                snapshot={state.snapshots.find((s) => s.month === month)}
+                completedTasks={state.tasks.completed[month] ?? []}
+                serviceMap={serviceMap}
+                onOpenTask={(task, service) => setSelected({ kind: 'completed', task, service })}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Task detail modal */}
       {selected && (
-        <Modal
-          open
-          onClose={() => setSelected(null)}
-          title="Task Details"
-          className="max-w-lg"
-        >
+        <Modal open onClose={() => setSelected(null)} title="Task Details" className="max-w-lg">
           <TaskDetailContent
             selected={selected}
             onViewService={() => {

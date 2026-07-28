@@ -4,21 +4,18 @@
  * Runs once daily. Scans all pipeline tasks whose `pipeline_entered_at`
  * timestamp is 14 or more days in the past and for which `pipeline_alerted`
  * is still false. For each such task it:
- *   1. Sends an alert email to MAIL_TO_ADDRESS.
+ *   1. Sends an alert email to OWNER_EMAIL.
  *   2. Sets pipeline_alerted = true so the alert is not sent again until the
  *      user reviews the task (which resets pipeline_entered_at and clears the flag).
- *
- * Required environment variables (set on the function in Catalyst Console):
- *   MAIL_FROM_ADDRESS — Sender address for the outgoing alert email
- *   MAIL_TO_ADDRESS   — Recipient address for pipeline review alerts
  */
 'use strict';
 const catalyst = require('zcatalyst-sdk-node');
 
 const TASKS_TABLE    = 'Tasks';
 const SERVICES_TABLE = 'Services';
-const MAIL_FROM = process.env.MAIL_FROM_ADDRESS || '';
-const MAIL_TO   = process.env.MAIL_TO_ADDRESS || '';
+const OWNER_EMAIL    = 'adhitya.balamurugan@zohocorp.com';
+const MAIL_FROM      = OWNER_EMAIL;
+const MAIL_TO        = OWNER_EMAIL;
 const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
 
 module.exports = async (jobData, context) => {
@@ -26,12 +23,6 @@ module.exports = async (jobData, context) => {
     const catalystApp = catalyst.initialize(context, { scope: 'admin' });
     const zcql = catalystApp.zcql();
     const dsTasks = catalystApp.datastore().table(TASKS_TABLE);
-
-    if (!MAIL_FROM || !MAIL_TO) {
-      console.warn('[pipeline_review_job] MAIL_FROM_ADDRESS or MAIL_TO_ADDRESS not set. Email skipped.');
-      context.closeWithSuccess();
-      return;
-    }
 
     // Fetch all pipeline tasks that have not yet been alerted
     const taskRows = await zcql.executeZCQLQuery(

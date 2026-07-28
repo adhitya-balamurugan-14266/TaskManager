@@ -6,30 +6,35 @@
  * functions receive a raw Node.js IncomingMessage rather than a pre-parsed router.
  *
  * Route summary:
- *   GET  /state                         — full app state snapshot
- *   POST /services/logo-upload          — presigned PUT URL for Stratus logo
- *   POST /services                      — create a service
- *   DELETE /services/:id                — delete service + tasks + Stratus logo
- *   POST /tasks                         — create a task (active or pipeline)
- *   PUT  /tasks/:id/push-to-pipeline    — move any task to pipeline
- *   PUT  /tasks/:id/activate            — activate a pipeline task
- *   PUT  /tasks/:id/complete            — complete an active task
- *   PUT  /tasks/:id/drop                — drop a pipeline task (with reason)
- *   PUT  /tasks/:id/pipeline-review     — keep in pipeline with reason; resets 2-week timer
- *   DELETE /tasks/:id                   — delete a task
- *   PUT  /tasks/:id                     — generic update (active / pipeline / completed)
+ *   GET  /state                            — full app state snapshot
+ *   POST /services/logo-upload             — presigned PUT URL for Stratus logo
+ *   POST /services                         — create a service
+ *   DELETE /services/:id                   — delete service + tasks + Stratus logo
+ *   POST /tasks                            — create a task (active or pipeline)
+ *   PUT  /tasks/:id/push-to-pipeline       — move any task to pipeline
+ *   PUT  /tasks/:id/activate               — activate a pipeline task
+ *   PUT  /tasks/:id/complete               — complete an active task
+ *   PUT  /tasks/:id/drop                   — drop a task from any status (with reason)
+ *   PUT  /tasks/:id/pipeline-review        — keep in pipeline with reason; resets 2-week timer
+ *   DELETE /tasks/:id                      — delete a task
+ *   PUT  /tasks/:id                        — generic update (active / pipeline / completed)
+ *   POST /snapshots                        — upsert monthly snapshot (create or update counts)
+ *   POST /snapshots/screenshot-upload      — presigned PUT URL for snapshot screenshot
+ *   PUT  /snapshots/:month/screenshot      — attach screenshot URL to existing snapshot
  */
 'use strict';
 const catalyst = require('zcatalyst-sdk-node');
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
-const SERVICES_TABLE = 'Services';
-const TASKS_TABLE    = 'Tasks';
-const JOBPOOL_NAME   = 'TaskReminderPool';       // Catalyst Job Pool for reminder jobs
-const REMINDER_FUNCTION_NAME = 'task_reminder'; // Job Function triggered by crons
-const STRATUS_BUCKET = 'taskmanager-175003';     // Catalyst Stratus bucket for service logos
-const LOGO_PATH_PREFIX = 'service-logos/';      // Object key prefix inside the bucket
-const TASK_IMAGES_PATH_PREFIX = 'task-images/'; // Object key prefix for task reference images
+const SERVICES_TABLE           = 'Services';
+const TASKS_TABLE              = 'Tasks';
+const MONTHLY_SNAPSHOTS_TABLE  = 'MonthlySnapshots';
+const JOBPOOL_NAME             = 'TaskReminderPool';
+const REMINDER_FUNCTION_NAME   = 'task_reminder';
+const STRATUS_BUCKET           = 'taskmanager-175003';
+const LOGO_PATH_PREFIX         = 'service-logos/';
+const TASK_IMAGES_PATH_PREFIX  = 'task-images/';
+const SNAPSHOT_SCREENSHOTS_PATH = 'month-snapshots/';
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
@@ -42,6 +47,10 @@ const TASK_IMAGES_PATH_PREFIX = 'task-images/'; // Object key prefix for task re
  */
 function isValidId(id) {
   return /^\d+$/.test(String(id));
+}
+
+function isValidMonth(m) {
+  return /^\d{4}-\d{2}$/.test(String(m));
 }
 
 /**
@@ -298,6 +307,25 @@ function rowToTask(row) {
 }
 
 /**
+ * Maps a raw MonthlySnapshots row to a typed snapshot object.
+ * @param {object} row
+ * @returns {object}
+ */
+function rowToSnapshot(row) {
+  return {
+    id: String(row.ROWID),
+    month: row.snapshot_month,
+    active_count: Number(row.active_count) || 0,
+    pipeline_count: Number(row.pipeline_count) || 0,
+    dropped_count: Number(row.dropped_count) || 0,
+    overdue_count: Number(row.overdue_count) || 0,
+    completed_count: Number(row.completed_count) || 0,
+    screenshot_url: row.screenshot_url || null,
+    updated_at: row.MODIFIEDTIME ? new Date(row.MODIFIEDTIME).toISOString() : new Date().toISOString(),
+  };
+}
+
+/**
  * Builds and returns the full application state snapshot by querying both
  * tables in two ZCQL calls. Completed tasks are grouped by "YYYY-MM" month
  * key so the frontend can render an archive selector. Overdue tasks are
@@ -328,10 +356,22 @@ async function buildState(zcql) {
 
   const overdue = computeOverdue(active);
 
+  // Fetch monthly snapshots — guarded so missing table doesn't break the app
+  let snapshots = [];
+  try {
+    const snapshotRows = await zcql.executeZCQLQuery(
+      `SELECT * FROM ${MONTHLY_SNAPSHOTS_TABLE} ORDER BY snapshot_month DESC`
+    );
+    snapshots = snapshotRows.map((r) => rowToSnapshot(r[MONTHLY_SNAPSHOTS_TABLE])).filter(Boolean);
+  } catch (e) {
+    console.warn('[task_api] MonthlySnapshots table not found, skipping:', e.message);
+  }
+
   return {
     services,
     tasks: { active, completed, pipeline, dropped },
     overdue,
+    snapshots,
     last_updated: new Date().toISOString(),
   };
 }
@@ -801,6 +841,64 @@ module.exports = async (req, res) => {
       }
 
       await dsTasks.updateRow(updates);
+      const state = await buildState(zcql);
+      return sendJson(res, 200, state);
+    }
+
+    // POST /snapshots/screenshot-upload — presigned PUT URL for snapshot screenshot
+    if (action === 'screenshot-upload' && pathParts[pathParts.length - 2] === 'snapshots' && method === 'POST') {
+      const body = await getBody(req);
+      const { month } = body;
+      if (!month || !isValidMonth(month)) return sendJson(res, 400, { error: 'Valid month (YYYY-MM) is required.' });
+      const key = `${SNAPSHOT_SCREENSHOTS_PATH}${month}.png`;
+      const adminApp = catalyst.initialize(req, { type: 'admin' });
+      const bucket = adminApp.stratus().bucket(STRATUS_BUCKET);
+      const signedRes = await bucket.generatePreSignedUrl(key, 'PUT', { expiryIn: 300 });
+      const objectUrl = `https://${STRATUS_BUCKET}-development.zohostratus.in/${key}`;
+      return sendJson(res, 200, { presigned_url: signedRes.signature, object_url: objectUrl });
+    }
+
+    // POST /snapshots — upsert (create or update) monthly snapshot counts
+    if (action === 'snapshots' && method === 'POST') {
+      const body = await getBody(req);
+      const { month, active_count, pipeline_count, dropped_count, overdue_count, completed_count } = body;
+      if (!month || !isValidMonth(month)) return sendJson(res, 400, { error: 'Valid month (YYYY-MM) is required.' });
+      const dsSnapshots = catalystApp.datastore().table(MONTHLY_SNAPSHOTS_TABLE);
+      const existing = await zcql.executeZCQLQuery(
+        `SELECT ROWID FROM ${MONTHLY_SNAPSHOTS_TABLE} WHERE snapshot_month = '${month}'`
+      );
+      const payload = {
+        active_count: Number(active_count) || 0,
+        pipeline_count: Number(pipeline_count) || 0,
+        dropped_count: Number(dropped_count) || 0,
+        overdue_count: Number(overdue_count) || 0,
+        completed_count: Number(completed_count) || 0,
+      };
+      if (existing.length > 0) {
+        await dsSnapshots.updateRow({ ROWID: existing[0][MONTHLY_SNAPSHOTS_TABLE].ROWID, ...payload });
+      } else {
+        await dsSnapshots.insertRow({ snapshot_month: month, ...payload, screenshot_url: null });
+      }
+      const state = await buildState(zcql);
+      return sendJson(res, 200, state);
+    }
+
+    // PUT /snapshots/:month/screenshot — attach screenshot URL after Stratus upload
+    if (action === 'screenshot' && pathParts[pathParts.length - 3] === 'snapshots' && method === 'PUT') {
+      const month = pathParts[pathParts.length - 2];
+      if (!isValidMonth(month)) return sendJson(res, 400, { error: 'Invalid month format.' });
+      const body = await getBody(req);
+      const { screenshot_url } = body;
+      if (!screenshot_url) return sendJson(res, 400, { error: 'screenshot_url is required.' });
+      const existing = await zcql.executeZCQLQuery(
+        `SELECT ROWID FROM ${MONTHLY_SNAPSHOTS_TABLE} WHERE snapshot_month = '${month}'`
+      );
+      if (existing.length === 0) return sendJson(res, 404, { error: `No snapshot found for month "${month}".` });
+      const dsSnapshots = catalystApp.datastore().table(MONTHLY_SNAPSHOTS_TABLE);
+      await dsSnapshots.updateRow({
+        ROWID: existing[0][MONTHLY_SNAPSHOTS_TABLE].ROWID,
+        screenshot_url: String(screenshot_url),
+      });
       const state = await buildState(zcql);
       return sendJson(res, 200, state);
     }

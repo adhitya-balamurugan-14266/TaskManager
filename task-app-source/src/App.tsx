@@ -94,6 +94,9 @@ export default function App() {
             setSelectedService(s);
             setInitialServiceTab(tab ?? 'active');
           }}
+          onUpsertSnapshot={tm.upsertSnapshot}
+          onAttachSnapshotScreenshot={tm.attachSnapshotScreenshot}
+          getSnapshotScreenshotUploadUrl={tm.getSnapshotScreenshotUploadUrl}
         />
       ) : (
         <ServicesPage

@@ -1,16 +1,3 @@
-/**
- * useTaskManager — central state hook
- *
- * Owns the AppState, loading flag, and error message for the entire app.
- * All mutations go through `dispatch`, which:
- *   1. Sets loading=true
- *   2. Calls the engine function (which hits the API and returns a fresh state)
- *   3. Replaces the local state with the server response (single source of truth)
- *   4. Clears or sets the error accordingly
- *
- * Because the server always returns the full state after every mutation, there
- * is no need for optimistic updates or local state merging.
- */
 import { useState, useCallback, useEffect } from 'react';
 import { loadState } from '@/store/engine';
 import * as engine from '@/store/engine';
@@ -26,12 +13,15 @@ import type {
   MoveToPipelinePayload,
   DropTaskPayload,
   PipelineReviewPayload,
+  UpsertSnapshotPayload,
+  AttachSnapshotScreenshotPayload,
 } from '@/types';
 
 const EMPTY_STATE: AppState = {
   services: [],
   tasks: { active: [], completed: {}, pipeline: [], dropped: [] },
   overdue: [],
+  snapshots: [],
   last_updated: new Date().toISOString(),
 };
 
@@ -40,7 +30,6 @@ export function useTaskManager() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Load initial state from API
   useEffect(() => {
     loadState().then((result) => {
       if ('error' in result) setError(result.error);
@@ -49,10 +38,7 @@ export function useTaskManager() {
     });
   }, []);
 
-  /**
-   * Calls an engine function and replaces state with the server response.
-   * All action creators below delegate to this so error handling is centralised.
-   */
+  /** Full dispatch — shows the loading bar and surfaces errors. */
   async function dispatch<T>(fn: (s: AppState, p: T) => Promise<AppState | { error: string }>, payload: T) {
     setLoading(true);
     const result = await fn(state, payload);
@@ -63,6 +49,14 @@ export function useTaskManager() {
       setState(result as AppState);
     }
     setLoading(false);
+  }
+
+  /** Silent dispatch — updates state without triggering the loading bar. Used for background snapshot ops. */
+  async function silentDispatch<T>(fn: (s: AppState, p: T) => Promise<AppState | { error: string }>, payload: T) {
+    const result = await fn(state, payload);
+    if (!('error' in result)) {
+      setState(result as AppState);
+    }
   }
 
   const clearError = useCallback(() => setError(null), []);
@@ -83,5 +77,9 @@ export function useTaskManager() {
     dropTask: (p: DropTaskPayload) => dispatch(engine.dropTask, p),
     pipelineReview: (p: PipelineReviewPayload) => dispatch(engine.pipelineReview, p),
     getLogoUploadUrl: engine.getLogoUploadUrl,
+    // Snapshot operations — silent so they don't flash the loading bar
+    upsertSnapshot: (p: UpsertSnapshotPayload) => silentDispatch(engine.upsertSnapshot, p),
+    attachSnapshotScreenshot: (p: AttachSnapshotScreenshotPayload) => silentDispatch(engine.attachSnapshotScreenshot, p),
+    getSnapshotScreenshotUploadUrl: engine.getSnapshotScreenshotUploadUrl,
   };
 }

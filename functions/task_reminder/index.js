@@ -4,23 +4,20 @@
  * Triggered by a one-time Catalyst Cron that was created when a task with
  * reminder=true was saved. The cron passes two params:
  *   task_id        — ROWID of the task in the Tasks table
- *   reminder_email — Recipient address supplied at task creation
+ *   reminder_email — (unused for routing) stored on the task record
  *
  * The function only sends the email if the task is still active and still has
  * reminder=true at fire time. This guards against the case where the task was
  * completed, deleted, or had its reminder disabled before the cron fired.
- *
- * Required environment variables (set on the function in Catalyst Console):
- *   MAIL_FROM_ADDRESS — Sender address for the outgoing reminder email
- *   MAIL_TO_ADDRESS   — (Optional) Fallback recipient
  */
 'use strict';
 const catalyst = require('zcatalyst-sdk-node');
 
 const TASKS_TABLE    = 'Tasks';
 const SERVICES_TABLE = 'Services';
-const MAIL_FROM = process.env.MAIL_FROM_ADDRESS || '';
-const MAIL_TO = process.env.MAIL_TO_ADDRESS || '';
+const OWNER_EMAIL    = 'adhitya.balamurugan@zohocorp.com';
+const MAIL_FROM      = OWNER_EMAIL;
+const MAIL_TO        = OWNER_EMAIL;
 
 module.exports = async (jobData, context) => {
   try {
@@ -63,26 +60,10 @@ module.exports = async (jobData, context) => {
 
     console.log(`[task_reminder] Reminder fired for task "${task.title}" (ID: ${taskId}) due ${formattedDue}`);
 
-    const candidateRecipients = [
-      params && params.reminder_email ? String(params.reminder_email).trim() : '',
-      MAIL_TO ? String(MAIL_TO).trim() : '',
-    ].filter(Boolean);
-    const recipients = [...new Set(candidateRecipients.map((r) => r.toLowerCase()))];
-
-    if (!MAIL_FROM || recipients.length === 0) {
-      console.warn('[task_reminder] MAIL_FROM_ADDRESS not set or no recipient email. Email skipped.');
-      context.closeWithSuccess();
-      return;
-    }
-
-    if (recipients.includes(String(MAIL_FROM).toLowerCase())) {
-      console.warn('[task_reminder] Recipient and sender are the same address. Some inboxes may file this under Sent/All Mail/Spam.');
-    }
-
     const email = catalystApp.email();
     const mailResult = await email.sendMail({
       from_email: MAIL_FROM,
-      to_email: recipients,
+      to_email: [MAIL_TO],
       subject: `Task Reminder: "${task.title}" is due`,
       html_mode: true,
       content: `
@@ -108,7 +89,7 @@ module.exports = async (jobData, context) => {
       `
     });
     console.log('[task_reminder] sendMail response:', JSON.stringify(mailResult));
-    console.log(`[task_reminder] Email accepted for delivery to [${recipients.join(', ')}] for task "${task.title}".`);
+    console.log(`[task_reminder] Email accepted for delivery to [${MAIL_TO}] for task "${task.title}".`);
     context.closeWithSuccess();
   } catch (error) {
     console.error('[task_reminder] Error:', error.message || error);
