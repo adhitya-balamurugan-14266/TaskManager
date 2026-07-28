@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { ActiveTask } from '@/types';
+import type { ActiveTask, Service } from '@/types';
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import { Modal } from '@/components/Modal';
@@ -8,19 +8,21 @@ import { ImageReferences } from '@/components/ImageReferences';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { formatDate, formatDateTime, extractDate, extractTime, isOverdue, stripHtml } from '@/lib/utils';
 import { RichTextEditor } from '@/components/RichTextEditor';
-import { CheckCircle, Trash2, Edit2, Bell, BellOff, Layers, Flame, Image as ImageIcon, CalendarClock, Info } from 'lucide-react';
+import { CheckCircle, Trash2, Edit2, Bell, BellOff, Layers, Flame, Image as ImageIcon, CalendarClock, Info, XCircle } from 'lucide-react';
 import { TaskInfoModal } from '@/components/TaskInfoModal';
 
 interface TaskCardProps {
   task: ActiveTask;
   serviceName: string;
+  services: Service[];
   onComplete: (id: string, finalThoughts?: string) => void;
   onDelete: (id: string) => void;
-  onUpdate: (id: string, data: { title?: string; description?: string; days_assigned?: number; due_date?: string; reminder?: boolean; reminder_time?: string; reminder_email?: string; is_priority?: boolean; image_references?: string[] }) => void;
+  onUpdate: (id: string, data: { title?: string; description?: string; days_assigned?: number; due_date?: string; reminder?: boolean; reminder_time?: string; reminder_email?: string; is_priority?: boolean; image_references?: string[]; service_id?: string }) => void;
   onMoveToPipeline: (id: string, reason: string) => void;
+  onDrop: (id: string, reason: string) => void;
 }
 
-export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, onMoveToPipeline }: TaskCardProps) {
+export function TaskCard({ task, serviceName, services, onComplete, onDelete, onUpdate, onMoveToPipeline, onDrop }: TaskCardProps) {
   const [editOpen, setEditOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -30,12 +32,15 @@ export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, on
   const [finalThoughts, setFinalThoughts] = useState('');
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [newDueDatetime, setNewDueDatetime] = useState('');
+  const [dropOpen, setDropOpen] = useState(false);
+  const [dropReason, setDropReason] = useState('');
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [form, setForm] = useState({
     title: task.title,
     description: task.description ?? '',
     days_assigned: String(task.days_assigned),
     due_datetime: `${extractDate(task.due_date)}T${extractTime(task.due_date)}`,
+    service_id: task.service_id,
     image_references: task.image_references ?? [] as string[],
   });
   const overdue = isOverdue(task.due_date);
@@ -49,7 +54,6 @@ export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, on
   }
 
   function handleUpdate() {
-    // Convert datetime-local (local time) to proper UTC ISO string via Date constructor
     const dueIso = form.due_datetime ? new Date(form.due_datetime).toISOString() : undefined;
     onUpdate(task.id, {
       title: form.title,
@@ -57,6 +61,7 @@ export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, on
       days_assigned: Math.max(0, Number(form.days_assigned) || 0),
       due_date: dueIso,
       image_references: form.image_references,
+      ...(form.service_id !== task.service_id ? { service_id: form.service_id } : {}),
     });
     setEditOpen(false);
   }
@@ -65,6 +70,13 @@ export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, on
     onMoveToPipeline(task.id, pipelineReason.trim());
     setPipelineOpen(false);
     setPipelineReason('');
+  }
+
+  function handleDrop() {
+    if (!dropReason.trim()) return;
+    onDrop(task.id, dropReason.trim());
+    setDropOpen(false);
+    setDropReason('');
   }
 
   function handleReschedule() {
@@ -125,7 +137,7 @@ export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, on
           )}
         </div>
 
-        <div className="flex items-center gap-2 pt-1 border-t border-gray-100 dark:border-gray-800">
+        <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-gray-100 dark:border-gray-800">
           <Button size="sm" variant="primary" onClick={() => setCompleteOpen(true)} className="gap-1">
             <CheckCircle className="size-3.5" /> Complete
           </Button>
@@ -142,6 +154,9 @@ export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, on
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setPipelineOpen(true)} className="gap-1 text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950">
             <Layers className="size-3.5" /> Pipeline
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => { setDropReason(''); setDropOpen(true); }} className="gap-1 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800">
+            <XCircle className="size-3.5" /> Drop
           </Button>
           {overdue && (
             <Button
@@ -203,10 +218,7 @@ export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, on
             type="number"
             min={0}
             value={form.days_assigned}
-            onChange={(e) => {
-              const value = e.target.value;
-              setForm((f) => ({ ...f, days_assigned: value }));
-            }}
+            onChange={(e) => setForm((f) => ({ ...f, days_assigned: e.target.value }))}
           />
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Due date &amp; time</label>
@@ -238,6 +250,19 @@ export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, on
             images={form.image_references}
             onImagesChange={(imgs) => setForm((f) => ({ ...f, image_references: imgs }))}
           />
+          {/* Move Task */}
+          <div className="flex flex-col gap-1 pt-1 border-t border-gray-100 dark:border-gray-800">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Move Task</label>
+            <select
+              value={form.service_id}
+              onChange={(e) => setForm((f) => ({ ...f, service_id: e.target.value }))}
+              className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+            >
+              {services.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}{s.id === task.service_id ? ' (current)' : ''}</option>
+              ))}
+            </select>
+          </div>
           <div className="flex gap-2 justify-end pt-2">
             <Button variant="secondary" onClick={() => setEditOpen(false)}>Cancel</Button>
             <Button onClick={handleUpdate}>Save</Button>
@@ -268,11 +293,29 @@ export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, on
           />
           <div className="flex gap-2 justify-end">
             <Button variant="secondary" onClick={() => { setPipelineOpen(false); setPipelineReason(''); }}>Cancel</Button>
-            <Button
-              onClick={handleMoveToPipeline}
-              className="bg-violet-600 hover:bg-violet-700 text-white"
-            >
+            <Button onClick={handleMoveToPipeline} className="bg-violet-600 hover:bg-violet-700 text-white">
               <Layers className="size-3.5" /> Move to Pipeline
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Drop modal */}
+      <Modal open={dropOpen} onClose={() => { setDropOpen(false); setDropReason(''); }} title="Drop Task">
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          Drop <strong className="text-gray-900 dark:text-gray-100">{task.title}</strong>? It will be removed from active and moved to the Dropped section.
+        </p>
+        <div className="flex flex-col gap-4">
+          <Textarea
+            label="Reason *"
+            placeholder="Why is this task being dropped?"
+            value={dropReason}
+            onChange={(e) => setDropReason(e.target.value)}
+          />
+          <div className="flex gap-2 justify-end">
+            <Button variant="secondary" onClick={() => { setDropOpen(false); setDropReason(''); }}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDrop} disabled={!dropReason.trim()}>
+              <XCircle className="size-3.5" /> Drop Task
             </Button>
           </div>
         </div>
@@ -294,7 +337,7 @@ export function TaskCard({ task, serviceName, onComplete, onDelete, onUpdate, on
         />
       )}
 
-      {/* Reschedule modal — shown only for overdue tasks */}
+      {/* Reschedule modal */}
       <Modal open={rescheduleOpen} onClose={() => setRescheduleOpen(false)} title="Reschedule Task">
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
           Set a new due date for <strong className="text-gray-900 dark:text-gray-100">{task.title}</strong>. The task will return to active once a future date is saved.

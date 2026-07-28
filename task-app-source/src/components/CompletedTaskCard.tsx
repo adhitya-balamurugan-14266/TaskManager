@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { CompletedTask } from '@/types';
+import type { CompletedTask, Service } from '@/types';
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import { Modal } from '@/components/Modal';
@@ -7,25 +7,30 @@ import { Textarea } from '@/components/Input';
 import { ImageReferences } from '@/components/ImageReferences';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { formatDate, stripHtml } from '@/lib/utils';
-import { Trash2, Layers, Edit2, Image as ImageIcon, Info } from 'lucide-react';
+import { Trash2, Layers, Edit2, Image as ImageIcon, Info, XCircle } from 'lucide-react';
 import { TaskInfoModal } from '@/components/TaskInfoModal';
 
 interface CompletedTaskCardProps {
   task: CompletedTask;
   serviceName: string;
+  services: Service[];
   onDelete: (id: string) => void;
   onMoveToPipeline: (id: string, reason: string) => void;
-  onUpdate: (id: string, data: { final_thoughts?: string; image_references?: string[] }) => void;
+  onUpdate: (id: string, data: { final_thoughts?: string; image_references?: string[]; service_id?: string }) => void;
+  onDrop: (id: string, reason: string) => void;
 }
 
-export function CompletedTaskCard({ task, serviceName, onDelete, onMoveToPipeline, onUpdate }: CompletedTaskCardProps) {
+export function CompletedTaskCard({ task, serviceName, services, onDelete, onMoveToPipeline, onUpdate, onDrop }: CompletedTaskCardProps) {
   const [pipelineOpen, setPipelineOpen] = useState(false);
   const [pipelineReason, setPipelineReason] = useState('');
   const [infoOpen, setInfoOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editThoughts, setEditThoughts] = useState(task.final_thoughts ?? '');
   const [editImages, setEditImages] = useState<string[]>(task.image_references ?? []);
+  const [editServiceId, setEditServiceId] = useState(task.service_id);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [dropOpen, setDropOpen] = useState(false);
+  const [dropReason, setDropReason] = useState('');
 
   function handleMoveToPipeline() {
     onMoveToPipeline(task.id, pipelineReason.trim());
@@ -34,8 +39,19 @@ export function CompletedTaskCard({ task, serviceName, onDelete, onMoveToPipelin
   }
 
   function handleEditThoughts() {
-    onUpdate(task.id, { final_thoughts: editThoughts.trim() || undefined, image_references: editImages });
+    onUpdate(task.id, {
+      final_thoughts: editThoughts.trim() || undefined,
+      image_references: editImages,
+      ...(editServiceId !== task.service_id ? { service_id: editServiceId } : {}),
+    });
     setEditOpen(false);
+  }
+
+  function handleDrop() {
+    if (!dropReason.trim()) return;
+    onDrop(task.id, dropReason.trim());
+    setDropOpen(false);
+    setDropReason('');
   }
 
   return (
@@ -75,7 +91,7 @@ export function CompletedTaskCard({ task, serviceName, onDelete, onMoveToPipelin
           <Button size="sm" variant="destructive" onClick={() => onDelete(task.id)}>
             <Trash2 className="size-3.5" /> Delete
           </Button>
-          <Button size="sm" variant="secondary" onClick={() => { setEditThoughts(task.final_thoughts ?? ''); setEditImages(task.image_references ?? []); setEditOpen(true); }} className="gap-1">
+          <Button size="sm" variant="secondary" onClick={() => { setEditThoughts(task.final_thoughts ?? ''); setEditImages(task.image_references ?? []); setEditServiceId(task.service_id); setEditOpen(true); }} className="gap-1">
             <Edit2 className="size-3.5" /> {task.final_thoughts ? 'Edit thoughts' : 'Add thoughts'}
           </Button>
           {task.description && (
@@ -85,6 +101,9 @@ export function CompletedTaskCard({ task, serviceName, onDelete, onMoveToPipelin
           )}
           <Button size="sm" variant="ghost" onClick={() => setPipelineOpen(true)} className="gap-1 text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950">
             <Layers className="size-3.5" /> Pipeline
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => { setDropReason(''); setDropOpen(true); }} className="gap-1 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800">
+            <XCircle className="size-3.5" /> Drop
           </Button>
         </div>
       </div>
@@ -120,6 +139,19 @@ export function CompletedTaskCard({ task, serviceName, onDelete, onMoveToPipelin
             images={editImages}
             onImagesChange={setEditImages}
           />
+          {/* Move Task */}
+          <div className="flex flex-col gap-1 pt-1 border-t border-gray-100 dark:border-gray-800">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Move Task</label>
+            <select
+              value={editServiceId}
+              onChange={(e) => setEditServiceId(e.target.value)}
+              className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+            >
+              {services.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}{s.id === task.service_id ? ' (current)' : ''}</option>
+              ))}
+            </select>
+          </div>
           <div className="flex gap-2 justify-end">
             <Button variant="secondary" onClick={() => setEditOpen(false)}>Cancel</Button>
             <Button onClick={handleEditThoughts}>Save</Button>
@@ -141,11 +173,29 @@ export function CompletedTaskCard({ task, serviceName, onDelete, onMoveToPipelin
           />
           <div className="flex gap-2 justify-end">
             <Button variant="secondary" onClick={() => { setPipelineOpen(false); setPipelineReason(''); }}>Cancel</Button>
-            <Button
-              onClick={handleMoveToPipeline}
-              className="bg-violet-600 hover:bg-violet-700 text-white"
-            >
+            <Button onClick={handleMoveToPipeline} className="bg-violet-600 hover:bg-violet-700 text-white">
               <Layers className="size-3.5" /> Move to Pipeline
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Drop modal */}
+      <Modal open={dropOpen} onClose={() => { setDropOpen(false); setDropReason(''); }} title="Drop Task">
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          Drop <strong className="text-gray-900 dark:text-gray-100">{task.title}</strong>? It will be moved to the Dropped section.
+        </p>
+        <div className="flex flex-col gap-4">
+          <Textarea
+            label="Reason *"
+            placeholder="Why is this task being dropped?"
+            value={dropReason}
+            onChange={(e) => setDropReason(e.target.value)}
+          />
+          <div className="flex gap-2 justify-end">
+            <Button variant="secondary" onClick={() => { setDropOpen(false); setDropReason(''); }}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDrop} disabled={!dropReason.trim()}>
+              <XCircle className="size-3.5" /> Drop Task
             </Button>
           </div>
         </div>

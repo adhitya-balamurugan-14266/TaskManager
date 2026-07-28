@@ -21,11 +21,12 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
       <div
         className={cn(
-          'relative z-10 w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl p-6',
+          'relative z-10 w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl flex flex-col max-h-[90vh]',
           className
         )}
       >
-        <div className="flex items-center justify-between mb-4">
+        {/* Fixed header */}
+        <div className="flex items-center justify-between shrink-0 px-6 pt-6 pb-4">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
           <button
             onClick={onClose}
@@ -36,7 +37,10 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
             </svg>
           </button>
         </div>
-        {children}
+        {/* Scrollable body */}
+        <div className="overflow-y-auto px-6 pb-6 flex-1">
+          {children}
+        </div>
       </div>
     </div>
   );

@@ -131,6 +131,7 @@ export interface UpdateTaskPayload {
   final_thoughts?: string;   // completed tasks only
   is_priority?: boolean;     // active tasks only
   image_references?: string[];
+  service_id?: string;       // moves task to a different service
 }
 export interface ActivateTaskPayload {
   task_id: string;

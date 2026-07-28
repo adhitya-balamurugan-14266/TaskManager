@@ -552,7 +552,7 @@ module.exports = async (req, res) => {
       return sendJson(res, 200, state);
     }
 
-    // PUT /tasks/:id/drop — move a pipeline task to dropped status
+    // PUT /tasks/:id/drop — drop a task from any status (active, completed, or pipeline)
     if (pathParts[pathParts.length - 1] === 'drop' && pathParts[pathParts.length - 3] === 'tasks' && method === 'PUT') {
       const taskId = pathParts[pathParts.length - 2];
       if (!isValidId(taskId)) return sendJson(res, 400, { error: 'Invalid task ID.' });
@@ -562,12 +562,20 @@ module.exports = async (req, res) => {
         return sendJson(res, 400, { error: 'dropped_reason is required.' });
       }
       const taskRows = await zcql.executeZCQLQuery(
-        `SELECT * FROM ${TASKS_TABLE} WHERE ROWID = ${taskId} AND status = 'pipeline'`
+        `SELECT * FROM ${TASKS_TABLE} WHERE ROWID = ${taskId}`
       );
-      if (taskRows.length === 0) return sendJson(res, 404, { error: `Task "${taskId}" not found in pipeline.` });
+      if (taskRows.length === 0) return sendJson(res, 404, { error: `Task "${taskId}" not found.` });
+
+      const rawTask = taskRows[0][TASKS_TABLE];
+      if (rawTask.status === 'dropped') return sendJson(res, 400, { error: 'Task is already dropped.' });
+
+      // Cancel reminder cron for active tasks
+      if (rawTask.status === 'active') {
+        await deleteReminderCron(catalystApp, rawTask.cron_id || null);
+      }
 
       const dropped_date = new Date().toISOString();
-      await dsTasks.updateRow({
+      const updatePayload = {
         ROWID: taskId,
         status: 'dropped',
         pipeline_reason: null,
@@ -575,8 +583,16 @@ module.exports = async (req, res) => {
         pipeline_alerted: false,
         dropped_reason: String(dropped_reason).trim(),
         dropped_date,
-      });
+      };
+      // Clear scheduling fields for active tasks
+      if (rawTask.status === 'active') {
+        updatePayload.due_date = null;
+        updatePayload.reminder = false;
+        updatePayload.reminder_email = null;
+        updatePayload.cron_id = null;
+      }
 
+      await dsTasks.updateRow(updatePayload);
       const state = await buildState(zcql);
       return sendJson(res, 200, state);
     }
@@ -692,7 +708,18 @@ module.exports = async (req, res) => {
       const rawTask = taskRows[0][TASKS_TABLE];
       const existing = rowToTask(rawTask);
 
-      // Pipeline tasks: only title, description, pipeline_reason, image_references are editable
+      // Validate service_id if a move is requested
+      let newServiceId = null;
+      if (body.service_id !== undefined && String(body.service_id) !== String(existing.service_id)) {
+        if (!isValidId(body.service_id)) return sendJson(res, 400, { error: 'Invalid service_id.' });
+        const svcCheck = await zcql.executeZCQLQuery(
+          `SELECT ROWID FROM ${SERVICES_TABLE} WHERE ROWID = ${body.service_id}`
+        );
+        if (svcCheck.length === 0) return sendJson(res, 404, { error: `Service "${body.service_id}" not found.` });
+        newServiceId = String(body.service_id);
+      }
+
+      // Pipeline tasks: title, description, pipeline_reason, image_references, service_id
       if (existing.status === 'pipeline') {
         const updates = { ROWID: taskId };
         if (body.title !== undefined) updates.title = body.title.trim();
@@ -704,12 +731,13 @@ module.exports = async (req, res) => {
           updates.image_references = Array.isArray(body.image_references) && body.image_references.length > 0
             ? JSON.stringify(body.image_references) : null;
         }
+        if (newServiceId) updates.service_id = newServiceId;
         await dsTasks.updateRow(updates);
         const state = await buildState(zcql);
         return sendJson(res, 200, state);
       }
 
-      // Completed tasks: only final_thoughts and image_references are editable
+      // Completed tasks: final_thoughts, image_references, service_id
       if (existing.status === 'completed') {
         const updates = { ROWID: taskId };
         if (body.final_thoughts !== undefined) updates.final_thoughts = body.final_thoughts ? body.final_thoughts.trim() : null;
@@ -719,6 +747,7 @@ module.exports = async (req, res) => {
           updates.image_references = Array.isArray(body.image_references) && body.image_references.length > 0
             ? JSON.stringify(body.image_references) : null;
         }
+        if (newServiceId) updates.service_id = newServiceId;
         await dsTasks.updateRow(updates);
         const state = await buildState(zcql);
         return sendJson(res, 200, state);
@@ -732,6 +761,7 @@ module.exports = async (req, res) => {
       if (body.reminder !== undefined) updates.reminder = !!body.reminder;
       if (body.reminder_email !== undefined) updates.reminder_email = body.reminder_email ? body.reminder_email.trim() : null;
       if (body.is_priority !== undefined) updates.is_priority = !!body.is_priority;
+      if (newServiceId) updates.service_id = newServiceId;
       if (body.image_references !== undefined) {
         const adminApp = catalyst.initialize(req, { type: 'admin' });
         await deleteRemovedImages(adminApp, existing.image_references || [], body.image_references || []);

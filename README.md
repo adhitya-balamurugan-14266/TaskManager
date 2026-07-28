@@ -39,9 +39,25 @@ A full-stack task management application built on **Zoho Catalyst** — manage s
 
 ### Dropped Tasks
 - Tasks that are deliberately removed from the pipeline are moved to a **Dropped** status.
+- **Drop any task directly** — a **Drop** button is present on all active, completed, and pipeline task cards. Clicking it opens a confirmation modal that requires a reason before confirming.
+- Active tasks: drop clears the due date, reminder, and cron before marking dropped.
+- Pipeline tasks: a dedicated **Drop** shortcut button sits in the card footer alongside the existing Review flow (which also supports dropping via the multi-step review modal).
 - A **Dropped** tab in each service's task view shows all dropped tasks for that service, with strikethrough titles, the drop reason, and drop date.
 - Dropped tasks can be **restored to the pipeline** from the Dropped tab.
 - The **My Workspace** Kanban board includes a **Dropped** column as the first column.
+
+### Move Task Between Services
+- Every edit modal (active, completed, pipeline) includes a **Move Task** dropdown listing all services.
+- Selecting a different service and saving moves the task to that service while preserving its current status, content, and images.
+- The task immediately disappears from the current service view and appears under the destination service.
+
+### Scrollable Create / Edit Modals
+- All modals (Create Task, Edit Task, Edit Thoughts, Pipeline edit) have a **fixed header** and a **scrollable body** capped at 90 % viewport height.
+- Long descriptions, image grids, and scheduling fields no longer push the action buttons off-screen.
+
+### Rich Text Lists
+- The description editor supports **bullet lists**, **numbered lists**, and multi-level **nested lists** (up to three levels: disc → circle → square for bullets; decimal → lower-alpha → lower-roman for numbers).
+- List markers render correctly in both the editor and all read-only description views (info panel, workspace detail sheet).
 
 ### Final Thoughts
 - Optionally add a **Final Thoughts** note when completing a task.

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { PipelineTask } from '@/types';
+import type { PipelineTask, Service } from '@/types';
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import { Modal } from '@/components/Modal';
@@ -8,16 +8,17 @@ import { ImageReferences } from '@/components/ImageReferences';
 import { ImageLightbox } from '@/components/ImageLightbox';
 import { formatDate, stripHtml } from '@/lib/utils';
 import { RichTextEditor } from '@/components/RichTextEditor';
-import { Trash2, ArrowRight, Edit2, AlertTriangle, ClipboardCheck, Image as ImageIcon, Info } from 'lucide-react';
+import { Trash2, ArrowRight, Edit2, AlertTriangle, ClipboardCheck, Image as ImageIcon, Info, XCircle } from 'lucide-react';
 import { TaskInfoModal } from '@/components/TaskInfoModal';
 
 interface PipelineTaskCardProps {
   task: PipelineTask;
   serviceName: string;
+  services: Service[];
   userEmail: string;
   onDelete: (id: string) => void;
   onActivate: (id: string, data: { days_assigned: number; due_date?: string; reminder: boolean; reminder_email?: string }) => void;
-  onUpdate: (id: string, data: { title?: string; description?: string; pipeline_reason?: string; image_references?: string[] }) => void;
+  onUpdate: (id: string, data: { title?: string; description?: string; pipeline_reason?: string; image_references?: string[]; service_id?: string }) => void;
   onDrop: (id: string, reason: string) => void;
   onPipelineReview: (id: string, reason: string) => void;
 }
@@ -29,7 +30,7 @@ function isPipelineOverdue(task: PipelineTask): boolean {
   return Date.now() - startMs >= 14 * 24 * 60 * 60 * 1000;
 }
 
-export function PipelineTaskCard({ task, serviceName, userEmail, onDelete, onActivate, onUpdate, onDrop, onPipelineReview }: PipelineTaskCardProps) {
+export function PipelineTaskCard({ task, serviceName, services, userEmail, onDelete, onActivate, onUpdate, onDrop, onPipelineReview }: PipelineTaskCardProps) {
   const [activateOpen, setActivateOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -39,12 +40,15 @@ export function PipelineTaskCard({ task, serviceName, userEmail, onDelete, onAct
   const [dropReason, setDropReason] = useState('');
   const [keepReason, setKeepReason] = useState('');
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [quickDropOpen, setQuickDropOpen] = useState(false);
+  const [quickDropReason, setQuickDropReason] = useState('');
 
   const [editForm, setEditForm] = useState({
     title: task.title,
     description: task.description ?? '',
     pipeline_reason: task.pipeline_reason ?? '',
     image_references: task.image_references ?? [] as string[],
+    service_id: task.service_id,
   });
 
   const overdue = isPipelineOverdue(task);
@@ -55,8 +59,16 @@ export function PipelineTaskCard({ task, serviceName, userEmail, onDelete, onAct
       description: editForm.description,
       pipeline_reason: editForm.pipeline_reason,
       image_references: editForm.image_references,
+      ...(editForm.service_id !== task.service_id ? { service_id: editForm.service_id } : {}),
     });
     setEditOpen(false);
+  }
+
+  function handleQuickDrop() {
+    if (!quickDropReason.trim()) return;
+    onDrop(task.id, quickDropReason.trim());
+    setQuickDropOpen(false);
+    setQuickDropReason('');
   }
 
   function openReview() {
@@ -164,7 +176,7 @@ export function PipelineTaskCard({ task, serviceName, userEmail, onDelete, onAct
           <Button size="sm" variant="primary" onClick={() => setActivateOpen(true)} className="gap-1">
             <ArrowRight className="size-3.5" /> Move to Active
           </Button>
-          <Button size="sm" variant="secondary" onClick={() => { setEditForm({ title: task.title, description: task.description ?? '', pipeline_reason: task.pipeline_reason ?? '', image_references: task.image_references ?? [] }); setEditOpen(true); }}>
+          <Button size="sm" variant="secondary" onClick={() => { setEditForm({ title: task.title, description: task.description ?? '', pipeline_reason: task.pipeline_reason ?? '', image_references: task.image_references ?? [], service_id: task.service_id }); setEditOpen(true); }}>
             <Edit2 className="size-3.5" />
           </Button>
           {task.description && (
@@ -174,6 +186,9 @@ export function PipelineTaskCard({ task, serviceName, userEmail, onDelete, onAct
           )}
           <Button size="sm" variant="secondary" onClick={openReview} className="gap-1">
             <ClipboardCheck className="size-3.5" /> Review
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => { setQuickDropReason(''); setQuickDropOpen(true); }} className="gap-1 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800">
+            <XCircle className="size-3.5" /> Drop
           </Button>
           <Button size="sm" variant="destructive" onClick={() => setConfirmDelete(true)}>
             <Trash2 className="size-3.5" />
@@ -289,6 +304,19 @@ export function PipelineTaskCard({ task, serviceName, userEmail, onDelete, onAct
             images={editForm.image_references}
             onImagesChange={(imgs) => setEditForm((f) => ({ ...f, image_references: imgs }))}
           />
+          {/* Move Task */}
+          <div className="flex flex-col gap-1 pt-1 border-t border-gray-100 dark:border-gray-800">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Move Task</label>
+            <select
+              value={editForm.service_id}
+              onChange={(e) => setEditForm((f) => ({ ...f, service_id: e.target.value }))}
+              className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+            >
+              {services.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}{s.id === task.service_id ? ' (current)' : ''}</option>
+              ))}
+            </select>
+          </div>
           <div className="flex gap-2 justify-end pt-2">
             <Button variant="secondary" onClick={() => setEditOpen(false)}>Cancel</Button>
             <Button onClick={handleEdit} disabled={!editForm.title.trim()}>Save</Button>
@@ -390,6 +418,27 @@ export function PipelineTaskCard({ task, serviceName, userEmail, onDelete, onAct
           onDescriptionChange={(html) => onUpdate(task.id, { description: html })}
         />
       )}
+
+      {/* Quick drop modal */}
+      <Modal open={quickDropOpen} onClose={() => { setQuickDropOpen(false); setQuickDropReason(''); }} title="Drop Task">
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          Drop <strong className="text-gray-900 dark:text-gray-100">{task.title}</strong>? It will be moved to the Dropped section.
+        </p>
+        <div className="flex flex-col gap-4">
+          <Textarea
+            label="Reason *"
+            placeholder="Why is this task being dropped?"
+            value={quickDropReason}
+            onChange={(e) => setQuickDropReason(e.target.value)}
+          />
+          <div className="flex gap-2 justify-end">
+            <Button variant="secondary" onClick={() => { setQuickDropOpen(false); setQuickDropReason(''); }}>Cancel</Button>
+            <Button variant="destructive" onClick={handleQuickDrop} disabled={!quickDropReason.trim()}>
+              <XCircle className="size-3.5" /> Drop Task
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </>
   );
 }

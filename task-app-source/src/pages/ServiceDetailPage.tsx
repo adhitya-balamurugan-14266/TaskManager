@@ -23,7 +23,7 @@ interface ServiceDetailPageProps {
   onCreateTask: (data: { title: string; days_assigned: number; due_date?: string; reminder: boolean; description?: string; reminder_time?: string; reminder_email?: string; is_pipeline?: boolean; image_references?: string[] }) => void;
   onCompleteTask: (id: string, finalThoughts?: string) => void;
   onDeleteTask: (id: string) => void;
-  onUpdateTask: (id: string, data: { title?: string; description?: string; days_assigned?: number; due_date?: string; reminder?: boolean; reminder_time?: string; reminder_email?: string; pipeline_reason?: string; final_thoughts?: string; image_references?: string[] }) => void;
+  onUpdateTask: (id: string, data: { title?: string; description?: string; days_assigned?: number; due_date?: string; reminder?: boolean; reminder_time?: string; reminder_email?: string; pipeline_reason?: string; final_thoughts?: string; image_references?: string[]; service_id?: string }) => void;
   onActivateTask: (id: string, data: { days_assigned: number; due_date?: string; reminder: boolean; reminder_email?: string }) => void;
   onMoveToPipeline: (id: string, reason: string) => void;
   onDropTask: (id: string, reason: string) => void;
@@ -232,6 +232,7 @@ export function ServiceDetailPage({
                 key={task.id}
                 task={task}
                 serviceName={serviceMap[task.service_id] ?? '—'}
+                services={state.services}
                 userEmail={userEmail}
                 onDelete={onDeleteTask}
                 onActivate={(id, data) => onActivateTask(id, data)}
@@ -257,10 +258,12 @@ export function ServiceDetailPage({
                 key={task.id}
                 task={task}
                 serviceName={serviceMap[task.service_id] ?? '—'}
+                services={state.services}
                 onComplete={onCompleteTask}
                 onDelete={onDeleteTask}
                 onUpdate={(id, data) => onUpdateTask(id, data)}
                 onMoveToPipeline={onMoveToPipeline}
+                onDrop={onDropTask}
               />
             ))          )}
         </div>
@@ -301,9 +304,11 @@ export function ServiceDetailPage({
                     key={task.id}
                     task={task}
                     serviceName={serviceMap[task.service_id] ?? '—'}
+                    services={state.services}
                     onDelete={onDeleteTask}
                     onMoveToPipeline={onMoveToPipeline}
                     onUpdate={(id, data) => onUpdateTask(id, data)}
+                    onDrop={onDropTask}
                   />
                 ))}
               </div>
@@ -331,10 +336,12 @@ export function ServiceDetailPage({
                   key={task.id}
                   task={task}
                   serviceName={serviceMap[task.service_id] ?? '—'}
+                  services={state.services}
                   onComplete={onCompleteTask}
                   onDelete={onDeleteTask}
                   onUpdate={(id, data) => onUpdateTask(id, data)}
                   onMoveToPipeline={onMoveToPipeline}
+                  onDrop={onDropTask}
                 />
               );
             })
