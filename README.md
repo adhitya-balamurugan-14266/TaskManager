@@ -322,6 +322,7 @@ Throughout development, the **[Catalyst MCP (Model Context Protocol) Server](htt
 | **Stratus object storage** | Verified bucket config, object paths, and presigned URL behaviour for service logo and task image uploads |
 | **Query execution** | Ran ZCQL queries directly to inspect live data and validate schema changes |
 | **Project introspection** | Explored project config, resource IDs, and service metadata without leaving the editor |
+| **Live data updates** | Updated service `logo_url` values directly via ZCQL UPDATE without touching the app (e.g. swapped the Claude Apps service logo to an SVG stored in Stratus) |
 
 ---
 
