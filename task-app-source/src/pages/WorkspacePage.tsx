@@ -457,11 +457,11 @@ export function WorkspacePage({
       if (a.is_priority !== b.is_priority) return a.is_priority ? -1 : 1;
       return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
     });
-  const completedTasks = Object.values(state.tasks.completed).flat();
+  const completedTasks = state.tasks.completed[thisMonth] ?? [];
   const pipelineTasks = state.tasks.pipeline ?? [];
-  const droppedTasks = (state.tasks.dropped ?? []).sort(
-    (a, b) => new Date(b.dropped_date).getTime() - new Date(a.dropped_date).getTime()
-  );
+  const droppedTasks = (state.tasks.dropped ?? [])
+    .filter((t) => t.dropped_date?.startsWith(thisMonth))
+    .sort((a, b) => new Date(b.dropped_date).getTime() - new Date(a.dropped_date).getTime());
   const overdueTasks = state.overdue
     .map((o) => ({ o, task: state.tasks.active.find((t) => t.id === o.id) }))
     .filter((x): x is { o: (typeof state.overdue)[0]; task: ActiveTask } => x.task != null)

@@ -94,6 +94,7 @@ A full-stack task management application built on **Zoho Catalyst** — manage s
 
 ### My Workspace (Kanban Dashboard)
 - Five-column Kanban board: **Dropped**, **Pipeline**, **Active**, **Completed**, **Overdue** — all tasks across all services in one view.
+- **Monthly scoping for Completed and Dropped columns** — only tasks completed or dropped in the current calendar month appear in those two columns. This allows accurate month-by-month progress tracking. Pipeline, Active, and Overdue carry forward across months as usual.
 - Accessible from the homepage or via the **Dashboard** button in any service's task view.
 - Search bar in the header filters all five columns live as you type.
 - Click any card for full task details in a side sheet, including image thumbnails and drop reason for dropped tasks.
