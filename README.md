@@ -48,7 +48,7 @@ A full-stack task management application built on **Zoho Catalyst** — manage s
 
 ### Move Task Between Services
 - Every edit modal (active, completed, pipeline) includes a **Move Task** dropdown listing all services.
-- Selecting a different service and saving moves the task to that service while preserving its current status, content, and images.
+- Selecting a different service and saving moves the task to that service while preserving its current status, content, and attachments.
 - The task immediately disappears from the current service view and appears under the destination service.
 
 ### Scrollable Create / Edit Modals
@@ -83,21 +83,26 @@ A full-stack task management application built on **Zoho Catalyst** — manage s
 - Works across all task states: Active, Completed, Pipeline, and Dropped.
 - The Info button only appears when the task has a description.
 
-### Image References
-- Attach reference images to any task (active, pipeline, or completed) via the create/edit modals.
-- Images are uploaded to Catalyst Stratus and the URLs are stored in the `image_references` column.
-- Upload multiple images at once; a thumbnail grid is shown in the modal with hover-to-delete (✕ button).
-- Image count badge (e.g. **"1 image"**) is clickable and opens a full-screen **Lightbox** viewer.
-- The lightbox supports keyboard navigation: **Escape** to close, **← →** arrows to cycle through images, and a thumbnail strip for multi-image tasks.
-- Images displayed in the Workspace task detail panel are also clickable thumbnails that open the lightbox.
-- Removing an image from the edit form automatically deletes the object from Stratus on save.
+### Info Attachments
+- Attach **any file type** to a task (active, pipeline, or completed) from the create/edit modals via the **Upload info** button: images, CSV, JSON, PDF, Markdown/text, Office docs, audio, video, archives, and so on.
+- Max **25 MB per file**. Oversized files are skipped with an inline error, and the rest of the batch still uploads.
+- Files are uploaded straight to Catalyst Stratus through a presigned PUT URL, using the same bucket and path as before. Their URLs are stored in the `image_references` column. The column and route names are legacy and kept for backward compatibility.
+- The `Content-Type` is inferred from the extension when the browser leaves it blank (e.g. `.md`, some `.csv`), so files open in the browser with the right type instead of downloading as `octet-stream`.
+- Tiles in the modal grid:
+  - Images show a thumbnail.
+  - Other files show a type icon (spreadsheet, JSON braces, video, audio, archive, document), the file name and an extension badge, and open in a new tab.
+  - Every tile has a hover ✕ to remove it.
+- The **"N files"** badge on a task card opens an **Info** modal with the same grid.
+- Clicking an image opens the full-screen **Lightbox**. It cycles through the task's images only (**Escape** to close, **← →** to navigate, thumbnail strip for multiple images) and starts on the image you clicked.
+- The Workspace task detail panel shows the same **Info (N)** grid.
+- Removing a file from the edit form automatically deletes the object from Stratus on save.
 
 ### My Workspace (Kanban Dashboard)
 - Five-column Kanban board: **Dropped**, **Pipeline**, **Active**, **Completed**, **Overdue** — all tasks across all services in one view.
 - **Monthly scoping for Completed and Dropped columns** — only tasks completed or dropped in the current calendar month appear in those two columns. This allows accurate month-by-month progress tracking. Pipeline, Active, and Overdue carry forward across months as usual.
 - Accessible from the homepage or via the **Dashboard** button in any service's task view.
 - Search bar in the header filters all five columns live as you type.
-- Click any card for full task details in a side sheet, including image thumbnails and drop reason for dropped tasks.
+- Click any card for full task details in a side sheet, including Info attachments and drop reason for dropped tasks.
 - **Go to service** button in the task detail panel navigates directly to the matching tab in that service's view (e.g. a completed task opens the **Completed** tab).
 - Jump to any service directly via the ⋯ meatball menu.
 
@@ -173,7 +178,9 @@ TaskManager/
 │   │   │   ├── CompletedTaskCard.tsx  # Completed card (final thoughts, pipeline)
 │   │   │   ├── PipelineTaskCard.tsx   # Pipeline card (review modal, 2-week badge)
 │   │   │   ├── DroppedTaskCard.tsx    # Dropped task card (restore, delete)
-│   │   │   ├── ImageReferences.tsx    # Upload/manage task reference images
+│   │   │   ├── ImageReferences.tsx    # "Upload info" — upload/manage task attachments (any file type)
+│   │   │   ├── AttachmentTile.tsx     # Image thumbnail or file-type tile for one attachment
+│   │   │   ├── AttachmentGrid.tsx     # Read-only attachment grid + Info modal (images → lightbox)
 │   │   │   ├── ImageLightbox.tsx      # Full-screen image viewer with keyboard nav
 │   │   │   ├── Badge.tsx              # Status badges incl. priority + dropped
 │   │   │   ├── Button.tsx
@@ -197,7 +204,7 @@ TaskManager/
 | `POST` | `/execute/services` | Create a service (name, optional logo_url) |
 | `DELETE` | `/execute/services/:id` | Delete a service and all its tasks + Stratus logo |
 | `POST` | `/execute/services/logo-upload` | Get a presigned Stratus PUT URL for logo upload |
-| `POST` | `/execute/tasks/image-upload` | Get a presigned Stratus PUT URL for task image upload |
+| `POST` | `/execute/tasks/image-upload` | Get a presigned Stratus PUT URL for a task attachment (any file type) |
 | `POST` | `/execute/tasks` | Create a task (active or pipeline) |
 | `PUT` | `/execute/tasks/:id` | Update a task |
 | `PUT` | `/execute/tasks/:id/complete` | Mark a task completed (with optional final thoughts) |
@@ -244,7 +251,7 @@ TaskManager/
 | `pipeline_alerted` | boolean | True after a 2-week pipeline alert email has been sent |
 | `dropped_reason` | varchar | Reason provided when dropping a pipeline task |
 | `dropped_date` | varchar | ISO timestamp when the task was dropped |
-| `image_references` | text | JSON array of Stratus image URLs (optional) |
+| `image_references` | text | JSON array of Stratus attachment URLs, any file type (optional) |
 
 ### `MonthlySnapshots`
 | Column | Type | Notes |
@@ -264,11 +271,11 @@ TaskManager/
 
 - **Bucket:** `taskmanager-175003` (public read)
 - **Logo path:** `service-logos/<timestamp>-<filename>`
-- **Task image path:** `task-images/<timestamp>-<filename>`
+- **Task attachment path:** `task-images/<timestamp>-<filename>` (all file types; prefix name is legacy)
 - **Snapshot screenshot path:** `month-snapshots/YYYY-MM.png`
 - Upload flow: frontend requests a presigned PUT URL from `task_api` → browser PUTs the file directly to Stratus → the returned object URL is saved in Datastore.
 - Logos are auto-deleted from Stratus when the service is deleted.
-- Task images are auto-deleted from Stratus when removed from the edit form or when the task is deleted.
+- Task attachments are auto-deleted from Stratus when removed from the edit form and saved.
 - Snapshot screenshot paths are fixed per month — re-uploading overwrites the previous screenshot for that month.
 
 ---

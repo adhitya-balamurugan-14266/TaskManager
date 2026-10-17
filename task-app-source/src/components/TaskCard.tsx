@@ -5,10 +5,10 @@ import { Button } from '@/components/Button';
 import { Modal } from '@/components/Modal';
 import { Input, Textarea } from '@/components/Input';
 import { ImageReferences } from '@/components/ImageReferences';
-import { ImageLightbox } from '@/components/ImageLightbox';
+import { AttachmentsModal } from '@/components/AttachmentGrid';
 import { formatDate, formatDateTime, extractDate, extractTime, isOverdue, stripHtml } from '@/lib/utils';
 import { RichTextEditor } from '@/components/RichTextEditor';
-import { CheckCircle, Trash2, Edit2, Bell, BellOff, Layers, Flame, Image as ImageIcon, CalendarClock, Info, XCircle } from 'lucide-react';
+import { CheckCircle, Trash2, Edit2, Bell, BellOff, Layers, Flame, Paperclip, CalendarClock, Info, XCircle } from 'lucide-react';
 import { TaskInfoModal } from '@/components/TaskInfoModal';
 
 interface TaskCardProps {
@@ -132,7 +132,7 @@ export function TaskCard({ task, serviceName, services, onComplete, onDelete, on
               onClick={(e) => { e.stopPropagation(); setLightboxOpen(true); }}
               className="flex items-center gap-0.5 text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors hover:underline underline-offset-2"
             >
-              <ImageIcon className="size-3" /> {task.image_references.length} image{task.image_references.length !== 1 ? 's' : ''}
+              <Paperclip className="size-3" /> {task.image_references.length} file{task.image_references.length !== 1 ? 's' : ''}
             </button>
           )}
         </div>
@@ -321,8 +321,8 @@ export function TaskCard({ task, serviceName, services, onComplete, onDelete, on
         </div>
       </Modal>
 
-      <ImageLightbox
-        images={task.image_references ?? []}
+      <AttachmentsModal
+        urls={task.image_references ?? []}
         open={lightboxOpen}
         onClose={() => setLightboxOpen(false)}
       />

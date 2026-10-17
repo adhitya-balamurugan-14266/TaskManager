@@ -5,9 +5,9 @@ import { Button } from '@/components/Button';
 import { Modal } from '@/components/Modal';
 import { Textarea } from '@/components/Input';
 import { ImageReferences } from '@/components/ImageReferences';
-import { ImageLightbox } from '@/components/ImageLightbox';
+import { AttachmentsModal } from '@/components/AttachmentGrid';
 import { formatDate, stripHtml } from '@/lib/utils';
-import { Trash2, Layers, Edit2, Image as ImageIcon, Info, XCircle } from 'lucide-react';
+import { Trash2, Layers, Edit2, Paperclip, Info, XCircle } from 'lucide-react';
 import { TaskInfoModal } from '@/components/TaskInfoModal';
 
 interface CompletedTaskCardProps {
@@ -76,7 +76,7 @@ export function CompletedTaskCard({ task, serviceName, services, onDelete, onMov
               onClick={(e) => { e.stopPropagation(); setLightboxOpen(true); }}
               className="flex items-center gap-0.5 text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors hover:underline underline-offset-2"
             >
-              <ImageIcon className="size-3" /> {task.image_references.length} image{task.image_references.length !== 1 ? 's' : ''}
+              <Paperclip className="size-3" /> {task.image_references.length} file{task.image_references.length !== 1 ? 's' : ''}
             </button>
           )}
         </div>
@@ -108,8 +108,8 @@ export function CompletedTaskCard({ task, serviceName, services, onDelete, onMov
         </div>
       </div>
 
-      <ImageLightbox
-        images={task.image_references ?? []}
+      <AttachmentsModal
+        urls={task.image_references ?? []}
         open={lightboxOpen}
         onClose={() => setLightboxOpen(false)}
       />

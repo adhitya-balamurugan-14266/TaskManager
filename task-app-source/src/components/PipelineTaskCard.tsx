@@ -5,10 +5,10 @@ import { Button } from '@/components/Button';
 import { Modal } from '@/components/Modal';
 import { Input, Textarea } from '@/components/Input';
 import { ImageReferences } from '@/components/ImageReferences';
-import { ImageLightbox } from '@/components/ImageLightbox';
+import { AttachmentsModal } from '@/components/AttachmentGrid';
 import { formatDate, stripHtml } from '@/lib/utils';
 import { RichTextEditor } from '@/components/RichTextEditor';
-import { Trash2, ArrowRight, Edit2, AlertTriangle, ClipboardCheck, Image as ImageIcon, Info, XCircle } from 'lucide-react';
+import { Trash2, ArrowRight, Edit2, AlertTriangle, ClipboardCheck, Paperclip, Info, XCircle } from 'lucide-react';
 import { TaskInfoModal } from '@/components/TaskInfoModal';
 
 interface PipelineTaskCardProps {
@@ -159,7 +159,7 @@ export function PipelineTaskCard({ task, serviceName, services, userEmail, onDel
               onClick={(e) => { e.stopPropagation(); setLightboxOpen(true); }}
               className="flex items-center gap-0.5 text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors hover:underline underline-offset-2"
             >
-              <ImageIcon className="size-3" /> {task.image_references.length} image{task.image_references.length !== 1 ? 's' : ''}
+              <Paperclip className="size-3" /> {task.image_references.length} file{task.image_references.length !== 1 ? 's' : ''}
             </button>
           )}
         </div>
@@ -403,8 +403,8 @@ export function PipelineTaskCard({ task, serviceName, services, userEmail, onDel
         </div>
       </Modal>
 
-      <ImageLightbox
-        images={task.image_references ?? []}
+      <AttachmentsModal
+        urls={task.image_references ?? []}
         open={lightboxOpen}
         onClose={() => setLightboxOpen(false)}
       />

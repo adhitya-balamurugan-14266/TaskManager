@@ -3,6 +3,7 @@ import type { AppState, Service, ActiveTask, CompletedTask, PipelineTask, Droppe
 import { Modal } from '@/components/Modal';
 import { Badge } from '@/components/Badge';
 import { ImageLightbox } from '@/components/ImageLightbox';
+import { AttachmentGrid } from '@/components/AttachmentGrid';
 import { formatDateTime } from '@/lib/utils';
 import {
   ArrowLeft,
@@ -15,7 +16,7 @@ import {
   Layers,
   Search,
   XCircle,
-  Image as ImageIcon,
+  Paperclip,
   ChevronDown,
   Camera,
 } from 'lucide-react';
@@ -156,7 +157,6 @@ function TaskDetailContent({
   onViewService: () => void;
 }) {
   const { task, service } = selected;
-  const [lightboxOpen, setLightboxOpen] = useState(false);
   const images = task.image_references ?? [];
 
   return (
@@ -244,20 +244,9 @@ function TaskDetailContent({
       {images.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">
-            <ImageIcon className="size-3.5" /> Image References ({images.length})
+            <Paperclip className="size-3.5" /> Info ({images.length})
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            {images.map((url, i) => (
-              <button
-                key={url}
-                type="button"
-                onClick={() => setLightboxOpen(true)}
-                className="aspect-square rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 hover:ring-2 hover:ring-blue-400 transition-all"
-              >
-                <img src={url} alt={`Reference ${i + 1}`} className="w-full h-full object-cover" />
-              </button>
-            ))}
-          </div>
+          <AttachmentGrid urls={images} />
         </div>
       )}
 
@@ -269,7 +258,6 @@ function TaskDetailContent({
         <ArrowRight className="size-4" />
       </button>
 
-      <ImageLightbox images={images} open={lightboxOpen} onClose={() => setLightboxOpen(false)} />
     </div>
   );
 }
