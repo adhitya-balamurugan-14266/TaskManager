@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>TaskMAXXING</title>
+    <!--
+      Catalyst Authentication sends people to the legacy /app/index.html path after
+      confirming an invite. Slate static apps ignore _redirects, so this real file
+      forwards them to the app at the root, keeping any query string and hash.
+    -->
+    <meta http-equiv="refresh" content="0; url=/" />
+    <script>window.location.replace('/' + window.location.search + window.location.hash);</script>
+  </head>
+  <body>
+    <p><a href="/">Continue to TaskMAXXING</a></p>
+  </body>
+</html>

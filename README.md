@@ -141,6 +141,7 @@ A full-stack task management application built on **Zoho Catalyst** — manage s
 - Slate and the function are on different domains, so the login cookie never reaches the API. Every API call sends a Catalyst token from the Web SDK instead (`Authorization: Zoho-oauthtoken …`, from `catalyst.auth.generateAuthToken()`). `task_api` reads the user with `getCurrentUser()` in user scope, then does all Datastore, ZCQL, Stratus and Job Scheduling work in **admin scope**.
 - **Log out** is fixed in the bottom-right corner, next to the theme toggle, on every signed-in screen. It goes to `/accounts/p/<ZAID>/logout`, which ends the httpOnly session cookies. The Web SDK's `signOut()` doesn't end a hosted-login session. The app then returns to the sign-in page with a *"You've been logged out"* note.
 - The reminder-email default is the signed-in user's email. The old first-run email setup screen has been removed.
+- After confirming an invite, Catalyst redirects to the legacy `/app/index.html`. Slate static apps ignore `_redirects`, so a real `public/app/index.html` forwards to `/`, keeping the query string and hash.
 - Console setup:
   - Authentication → Hosted login on, public signup off.
   - The owner is invited as an App User.
