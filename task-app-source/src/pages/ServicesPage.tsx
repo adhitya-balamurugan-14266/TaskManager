@@ -5,7 +5,6 @@ import { Input } from '@/components/Input';
 import { Modal } from '@/components/Modal';
 import { Badge } from '@/components/Badge';
 import { Plus, Trash2, ArrowRight, AlertTriangle, LayoutDashboard, ImagePlus, Building2 } from 'lucide-react';
-const appLogo = '/favicon.svg';
 
 interface ServicesPageProps {
   state: AppState;
@@ -14,9 +13,10 @@ interface ServicesPageProps {
   onSelectService: (service: Service) => void;
   onOpenDashboard: () => void;
   getLogoUploadUrl: (filename: string) => Promise<{ presigned_url: string; object_url: string } | { error: string }>;
+  userEmail: string;
 }
 
-export function ServicesPage({ state, onCreateService, onDeleteService, onSelectService, onOpenDashboard, getLogoUploadUrl }: ServicesPageProps) {
+export function ServicesPage({ state, onCreateService, onDeleteService, onSelectService, onOpenDashboard, getLogoUploadUrl, userEmail }: ServicesPageProps) {
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState('');
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -91,17 +91,22 @@ export function ServicesPage({ state, onCreateService, onDeleteService, onSelect
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <img
-            src={appLogo}
-            alt="Task Manager"
-            className="h-14 w-14 rounded-2xl object-cover object-center bg-white shadow-sm border border-gray-200"
-          />
-          <div className="space-y-1">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Task Manager</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Manage your services and tasks</p>
-          </div>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="space-y-1.5 min-w-0 max-w-full">
+          <h1 className="m-0">
+            {/* Wordmark has navy text; dark mode puts it on a light panel matching the favicon background */}
+            <img
+              src="/logo-wordmark.png"
+              alt="TaskMAXXING"
+              className="h-11 w-auto max-w-none shrink-0 dark:bg-[#e6f0fc] dark:rounded-xl dark:px-2.5 dark:py-1.5 dark:box-content"
+            />
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Manage your services and tasks</p>
+          {userEmail && (
+            <p className="text-xs text-gray-400 dark:text-gray-500 truncate" title={userEmail}>
+              Signed in as <span className="font-medium text-gray-600 dark:text-gray-300">{userEmail}</span>
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Button onClick={() => setCreateOpen(true)}>

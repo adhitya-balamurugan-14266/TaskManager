@@ -3,7 +3,9 @@
     "name": "task_api",
     "stack": "node20",
     "type": "advancedio",
-    "env_variables": {}
+    "env_variables": {
+      "ALLOWED_USER_IDS": "20660000002140058"
+    }
   },
   "execution": {
     "main": "index.js"

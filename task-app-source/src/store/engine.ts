@@ -8,6 +8,10 @@
  *
  * The BASE_URL can be overridden at build time via VITE_TASK_API_BASE_URL;
  * otherwise it defaults to the Catalyst development environment endpoint.
+ *
+ * Every request carries the signed-in user's Catalyst token (hosted login).
+ * A 401/403 from the API is reported to the handler registered with
+ * setAuthFailureHandler so the app can switch to the sign-in / no-access screen.
  */
 import type {
   AppState,
@@ -24,28 +28,48 @@ import type {
   UpsertSnapshotPayload,
   AttachSnapshotScreenshotPayload,
 } from '@/types';
+import { AuthError, authHeader, type CatalystUser } from '@/lib/auth';
 
 const BASE_URL =
   import.meta.env.VITE_TASK_API_BASE_URL ??
   'https://taskmanager-60047186223.development.catalystserverless.in/server/task_api/execute';
 
+let onAuthFailure: ((status: 401 | 403) => void) | null = null;
+
+/** Registers the callback used when the API says "signed out" (401) or "not allowed" (403). */
+export function setAuthFailureHandler(handler: ((status: 401 | 403) => void) | null) {
+  onAuthFailure = handler;
+}
+
 /**
- * Generic HTTP wrapper. Sets Content-Type only when a body is present to
- * avoid triggering CORS preflight on GET requests. Returns { error } on
- * any non-2xx status or network failure.
+ * fetch() against task_api with the Catalyst auth token attached. Reports
+ * 401/403 to the auth failure handler (and still returns the response).
+ */
+async function authedFetch(path: string, options?: RequestInit): Promise<Response> {
+  const headers = new Headers(options?.headers ?? {});
+  try {
+    headers.set('Authorization', await authHeader());
+  } catch (err) {
+    if (err instanceof AuthError) onAuthFailure?.(err.status);
+    throw err;
+  }
+  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  if (res.status === 401 || res.status === 403) onAuthFailure?.(res.status);
+  return res;
+}
+
+/**
+ * Generic HTTP wrapper. Sets Content-Type only when a body is present.
+ * Returns { error } on any non-2xx status or network failure.
  */
 async function apiFetch(path: string, options?: RequestInit): Promise<AppState | { error: string }> {
   try {
     const headers = new Headers(options?.headers ?? {});
-    // Only send JSON content type when a body exists; avoids preflight on simple GETs.
     if (options?.body && !headers.has('Content-Type')) {
       headers.set('Content-Type', 'application/json');
     }
 
-    const res = await fetch(`${BASE_URL}${path}`, {
-      ...options,
-      headers,
-    });
+    const res = await authedFetch(path, { ...options, headers });
     const contentType = res.headers.get('content-type') || '';
 
     if (contentType.includes('application/json')) {
@@ -62,6 +86,38 @@ async function apiFetch(path: string, options?: RequestInit): Promise<AppState |
   }
 }
 
+/** POST helper for the presigned-upload endpoints, which return their own JSON shape. */
+async function postJson<T>(path: string, body: unknown): Promise<T | { error: string }> {
+  try {
+    const res = await authedFetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error ?? `HTTP ${res.status}` };
+    return data as T;
+  } catch (err: unknown) {
+    return { error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+/**
+ * Who is signed in. 200 → the owner's details; otherwise the HTTP status
+ * (401 signed out, 403 signed in but not allowed into this app).
+ */
+export async function whoAmI(): Promise<{ user: CatalystUser } | { status: number; error: string }> {
+  try {
+    const res = await authedFetch('/whoami');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { status: res.status, error: data.error ?? `HTTP ${res.status}` };
+    return { user: data as CatalystUser };
+  } catch (err: unknown) {
+    if (err instanceof AuthError) return { status: err.status, error: err.message };
+    return { status: 0, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
 /** Fetches the full application state snapshot from the server. */
 export async function loadState(): Promise<AppState | { error: string }> {
   return apiFetch('/state');
@@ -74,18 +130,7 @@ export async function loadState(): Promise<AppState | { error: string }> {
  * (to save in the Services table).
  */
 export async function getLogoUploadUrl(filename: string): Promise<{ presigned_url: string; object_url: string } | { error: string }> {
-  try {
-    const res = await fetch(`${BASE_URL}/services/logo-upload`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename }),
-    });
-    const data = await res.json();
-    if (!res.ok) return { error: data.error ?? `HTTP ${res.status}` };
-    return data as { presigned_url: string; object_url: string };
-  } catch (err: unknown) {
-    return { error: err instanceof Error ? err.message : 'Network error' };
-  }
+  return postJson<{ presigned_url: string; object_url: string }>('/services/logo-upload', { filename });
 }
 
 /**
@@ -95,18 +140,7 @@ export async function getLogoUploadUrl(filename: string): Promise<{ presigned_ur
  * store in image_references), and the Stratus object key.
  */
 export async function getTaskImageUploadUrl(filename: string): Promise<{ presigned_url: string; object_url: string; key: string } | { error: string }> {
-  try {
-    const res = await fetch(`${BASE_URL}/tasks/image-upload`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename }),
-    });
-    const data = await res.json();
-    if (!res.ok) return { error: data.error ?? `HTTP ${res.status}` };
-    return data as { presigned_url: string; object_url: string; key: string };
-  } catch (err: unknown) {
-    return { error: err instanceof Error ? err.message : 'Network error' };
-  }
+  return postJson<{ presigned_url: string; object_url: string; key: string }>('/tasks/image-upload', { filename });
 }
 
 export async function createService(_state: AppState, payload: CreateServicePayload) {
@@ -165,16 +199,5 @@ export async function attachSnapshotScreenshot(_state: AppState, payload: Attach
 }
 
 export async function getSnapshotScreenshotUploadUrl(month: string): Promise<{ presigned_url: string; object_url: string } | { error: string }> {
-  try {
-    const res = await fetch(`${BASE_URL}/snapshots/screenshot-upload`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ month }),
-    });
-    const data = await res.json();
-    if (!res.ok) return { error: data.error ?? `HTTP ${res.status}` };
-    return data as { presigned_url: string; object_url: string };
-  } catch (err: unknown) {
-    return { error: err instanceof Error ? err.message : 'Network error' };
-  }
+  return postJson<{ presigned_url: string; object_url: string }>('/snapshots/screenshot-upload', { month });
 }

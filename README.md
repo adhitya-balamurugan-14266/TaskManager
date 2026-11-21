@@ -1,4 +1,6 @@
-# TaskManager
+# TaskMAXXING (TaskManager)
+
+![TaskMAXXING](task-app-source/public/logo-wordmark.png)
 
 A full-stack task management application built on **Zoho Catalyst** — manage services, track tasks with due dates, reminders, pipeline queues, and priorities. View everything in a Kanban-style workspace dashboard with dark mode support.
 
@@ -130,8 +132,20 @@ A full-stack task management application built on **Zoho Catalyst** — manage s
 - Stored in Catalyst Stratus object storage and displayed on service and task cards.
 - Logos are auto-deleted from Stratus when the service is deleted.
 
-### Setup & Onboarding
-- First-run email setup screen supports both **click** and **Enter key** to proceed.
+### Authentication (hosted login, owner only)
+- Sign-in uses **Catalyst hosted login**. Signed-out visitors see a TaskMAXXING sign-in page whose **Sign in** button opens `/__catalyst/auth/login`, served by Slate. After sign-in, the hosted page returns to the app.
+- The app is **single-user**. `task_api` lets in only the Catalyst user IDs listed in the `ALLOWED_USER_IDS` env variable, which defaults to the owner, `20660000002140058`.
+  - No signed-in user → `401`, and the app shows the sign-in page.
+  - Any other signed-in account → `403`, and the app shows a blank screen saying *"You don't have permission to access this app."* with a small **Log out** link. That account never receives data.
+- Data has no owner column. Every existing service, task and snapshot belongs to the single owner, so turning on login needed no data migration.
+- Slate and the function are on different domains, so the login cookie never reaches the API. Every API call sends a Catalyst token from the Web SDK instead (`Authorization: Zoho-oauthtoken …`, from `catalyst.auth.generateAuthToken()`). `task_api` reads the user with `getCurrentUser()` in user scope, then does all Datastore, ZCQL, Stratus and Job Scheduling work in **admin scope**.
+- **Log out** is fixed in the bottom-right corner, next to the theme toggle, on every signed-in screen. It goes to `/accounts/p/<ZAID>/logout`, which ends the httpOnly session cookies. The Web SDK's `signOut()` doesn't end a hosted-login session. The app then returns to the sign-in page with a *"You've been logged out"* note.
+- The reminder-email default is the signed-in user's email. The old first-run email setup screen has been removed.
+- Console setup:
+  - Authentication → Hosted login on, public signup off.
+  - The owner is invited as an App User.
+  - `task-manager.onslate.in` is an authorized CORS domain.
+  - To let another account in, add its user ID to `ALLOWED_USER_IDS`.
 
 ---
 
@@ -139,6 +153,7 @@ A full-stack task management application built on **Zoho Catalyst** — manage s
 |---|---|
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS v4 |
 | Hosting | Catalyst Slate (static) |
+| Auth | Catalyst Authentication: hosted login + Web SDK 4.6.2; owner-only allowlist in `task_api` |
 | API | Catalyst Advanced I/O Function (`task_api`) — Node.js 20 |
 | Job Functions | `task_reminder` (due-date email), `pipeline_review_job` (daily pipeline alert) — Node.js 20 |
 | Database | Catalyst Datastore (ZCQL) — `Services` + `Tasks` tables |
@@ -166,10 +181,11 @@ TaskManager/
 │       └── package.json
 ├── task-app-source/               # Vite + React source
 │   ├── src/
-│   │   ├── App.tsx
+│   │   ├── App.tsx                # Auth gate (sign-in / no-access / app) + Log out & theme controls
+│   │   ├── lib/auth.ts            # Hosted login helpers: SDK readiness, token header, sign-in/out URLs
+│   │   ├── lib/attachments.ts     # File-type helpers for Info attachments
 │   │   ├── index.css              # Tailwind v4 + dark mode variant
 │   │   ├── pages/
-│   │   │   ├── SetupPage.tsx          # First-run email setup
 │   │   │   ├── ServicesPage.tsx       # Services list + create modal
 │   │   │   ├── ServiceDetailPage.tsx  # Tasks per service (tabs + search incl. Dropped)
 │   │   │   └── WorkspacePage.tsx      # Kanban dashboard (5 columns, search, dark mode)
@@ -189,7 +205,10 @@ TaskManager/
 │   │   ├── hooks/useTaskManager.ts
 │   │   ├── store/engine.ts        # API client
 │   │   └── types/index.ts
-│   ├── public/favicon.svg
+│   ├── public/
+│   │   ├── favicon.ico            # TM favicon (16–256 px)
+│   │   ├── apple-touch-icon.png   # 180 px home-screen icon
+│   │   └── logo-wordmark.png      # TaskMAXXING wordmark (header + sign-in page)
 │   └── vite.config.ts
 └── client/                        # Vite build output → deployed to Slate
 ```
@@ -198,8 +217,11 @@ TaskManager/
 
 ## API Routes (`task_api`)
 
+Every route requires a signed-in owner (see Authentication). It returns `401` when the request has no user and `403` for any other account.
+
 | Method | Path | Description |
 |---|---|---|
+| `GET` | `/execute/whoami` | The signed-in owner (`user_id`, `email_id`, `first_name`). 401 if signed out, 403 for any other account |
 | `GET` | `/execute/state` | Fetch full app state (services, tasks, overdue, dropped) |
 | `POST` | `/execute/services` | Create a service (name, optional logo_url) |
 | `DELETE` | `/execute/services/:id` | Delete a service and all its tasks + Stratus logo |

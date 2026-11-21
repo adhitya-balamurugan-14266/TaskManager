@@ -5,7 +5,12 @@
  * the last URL path segment(s) and the HTTP method, since Catalyst Advanced I/O
  * functions receive a raw Node.js IncomingMessage rather than a pre-parsed router.
  *
+ * Access: hosted login. Every request must carry the signed-in user's Catalyst
+ * token, and that user must be listed in ALLOWED_USER_IDS (the app owner).
+ * No user → 401, any other user → 403. Data access itself runs in admin scope.
+ *
  * Route summary:
+ *   GET  /whoami                           — the signed-in owner's details
  *   GET  /state                            — full app state snapshot
  *   POST /services/logo-upload             — presigned PUT URL for Stratus logo
  *   POST /services                         — create a service
@@ -35,6 +40,9 @@ const STRATUS_BUCKET           = 'taskmanager-175003';
 const LOGO_PATH_PREFIX         = 'service-logos/';
 const TASK_IMAGES_PATH_PREFIX  = 'task-images/';
 const SNAPSHOT_SCREENSHOTS_PATH = 'month-snapshots/';
+// Catalyst user IDs allowed into the app (comma-separated). Defaults to the owner.
+const ALLOWED_USER_IDS = (process.env.ALLOWED_USER_IDS || '20660000002140058')
+  .split(',').map((id) => id.trim()).filter(Boolean);
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
@@ -376,10 +384,31 @@ async function buildState(zcql) {
   };
 }
 
+/**
+ * Resolves the signed-in app user from the request's Catalyst token.
+ * Returns null when no user is signed in.
+ */
+async function currentUser(req) {
+  try {
+    const user = await catalyst.initialize(req, { scope: 'user' }).userManagement().getCurrentUser();
+    if (user && user.user_id) return user;
+  } catch (e) {
+    // not signed in
+  }
+  return null;
+}
+
 // ─── Request Handler ────────────────────────────────────────────────────────────
 module.exports = async (req, res) => {
   try {
-    const catalystApp = catalyst.initialize(req);
+    // Owner-only access: 401 when signed out, 403 for any other account.
+    const user = await currentUser(req);
+    if (!user) return sendJson(res, 401, { error: 'Sign in to continue.' });
+    if (!ALLOWED_USER_IDS.includes(String(user.user_id))) {
+      return sendJson(res, 403, { error: "You don't have permission to access this app." });
+    }
+
+    const catalystApp = catalyst.initialize(req, { scope: 'admin' });
     const zcql = catalystApp.zcql();
     const dsServices = catalystApp.datastore().table(SERVICES_TABLE);
     const dsTasks    = catalystApp.datastore().table(TASKS_TABLE);
@@ -391,6 +420,15 @@ module.exports = async (req, res) => {
     const pathParts = parsedUrl.pathname.split('/').filter(Boolean);
     const action    = pathParts[pathParts.length - 1]; // last segment
     const method    = req.method;
+
+    // GET /whoami — the signed-in owner
+    if (action === 'whoami' && method === 'GET') {
+      return sendJson(res, 200, {
+        user_id: String(user.user_id),
+        email_id: user.email_id,
+        first_name: user.first_name || '',
+      });
+    }
 
     // GET /state — return full state
     if (action === 'state' && method === 'GET') {
@@ -405,7 +443,7 @@ module.exports = async (req, res) => {
       if (!filename) return sendJson(res, 400, { error: 'filename is required.' });
       const safe = String(filename).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100);
       const key = `${LOGO_PATH_PREFIX}${Date.now()}-${safe}`;
-      const adminApp = catalyst.initialize(req, { type: 'admin' });
+      const adminApp = catalyst.initialize(req, { scope: 'admin' });
       const bucket = adminApp.stratus().bucket(STRATUS_BUCKET);
       const signedRes = await bucket.generatePreSignedUrl(key, 'PUT', { expiryIn: 300 });
       const objectUrl = `https://${STRATUS_BUCKET}-development.zohostratus.in/${key}`;
@@ -419,7 +457,7 @@ module.exports = async (req, res) => {
       if (!filename) return sendJson(res, 400, { error: 'filename is required.' });
       const safe = String(filename).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100);
       const key = `${TASK_IMAGES_PATH_PREFIX}${Date.now()}-${safe}`;
-      const adminApp = catalyst.initialize(req, { type: 'admin' });
+      const adminApp = catalyst.initialize(req, { scope: 'admin' });
       const bucket = adminApp.stratus().bucket(STRATUS_BUCKET);
       const signedRes = await bucket.generatePreSignedUrl(key, 'PUT', { expiryIn: 300 });
       const objectUrl = `https://${STRATUS_BUCKET}-development.zohostratus.in/${key}`;
@@ -457,7 +495,7 @@ module.exports = async (req, res) => {
       const logoUrl = svcRows[0][SERVICES_TABLE].logo_url;
       if (logoUrl) {
         try {
-          const adminApp = catalyst.initialize(req, { type: 'admin' });
+          const adminApp = catalyst.initialize(req, { scope: 'admin' });
           // Extract key from URL: everything after the bucket host
           const keyMatch = logoUrl.match(/zohostratus\.in\/(.+)$/);
           if (keyMatch) {
@@ -766,7 +804,7 @@ module.exports = async (req, res) => {
         if (body.description !== undefined) updates.description = body.description ? body.description.trim() : null;
         if (body.pipeline_reason !== undefined) updates.pipeline_reason = body.pipeline_reason ? body.pipeline_reason.trim() : null;
         if (body.image_references !== undefined) {
-          const adminApp = catalyst.initialize(req, { type: 'admin' });
+          const adminApp = catalyst.initialize(req, { scope: 'admin' });
           await deleteRemovedImages(adminApp, existing.image_references || [], body.image_references || []);
           updates.image_references = Array.isArray(body.image_references) && body.image_references.length > 0
             ? JSON.stringify(body.image_references) : null;
@@ -782,7 +820,7 @@ module.exports = async (req, res) => {
         const updates = { ROWID: taskId };
         if (body.final_thoughts !== undefined) updates.final_thoughts = body.final_thoughts ? body.final_thoughts.trim() : null;
         if (body.image_references !== undefined) {
-          const adminApp = catalyst.initialize(req, { type: 'admin' });
+          const adminApp = catalyst.initialize(req, { scope: 'admin' });
           await deleteRemovedImages(adminApp, existing.image_references || [], body.image_references || []);
           updates.image_references = Array.isArray(body.image_references) && body.image_references.length > 0
             ? JSON.stringify(body.image_references) : null;
@@ -803,7 +841,7 @@ module.exports = async (req, res) => {
       if (body.is_priority !== undefined) updates.is_priority = !!body.is_priority;
       if (newServiceId) updates.service_id = newServiceId;
       if (body.image_references !== undefined) {
-        const adminApp = catalyst.initialize(req, { type: 'admin' });
+        const adminApp = catalyst.initialize(req, { scope: 'admin' });
         await deleteRemovedImages(adminApp, existing.image_references || [], body.image_references || []);
         updates.image_references = Array.isArray(body.image_references) && body.image_references.length > 0
           ? JSON.stringify(body.image_references) : null;
@@ -851,7 +889,7 @@ module.exports = async (req, res) => {
       const { month } = body;
       if (!month || !isValidMonth(month)) return sendJson(res, 400, { error: 'Valid month (YYYY-MM) is required.' });
       const key = `${SNAPSHOT_SCREENSHOTS_PATH}${month}.png`;
-      const adminApp = catalyst.initialize(req, { type: 'admin' });
+      const adminApp = catalyst.initialize(req, { scope: 'admin' });
       const bucket = adminApp.stratus().bucket(STRATUS_BUCKET);
       const signedRes = await bucket.generatePreSignedUrl(key, 'PUT', { expiryIn: 300 });
       const objectUrl = `https://${STRATUS_BUCKET}-development.zohostratus.in/${key}`;
